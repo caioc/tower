@@ -8,7 +8,15 @@ Tower is a sibling of [Copilot Runway](https://github.com/wilsonfaustino/copilot
 
 ## Status
 
-MVP, in daily use by the author. Builds are ad-hoc signed. Notarized releases come later.
+MVP, in daily use by the author. Releases are signed with a Developer ID and notarized by Apple.
+
+## Install
+
+```bash
+brew install --cask wilsonfaustino/tap/tower-menubar
+```
+
+The cask is `tower-menubar` because the Homebrew cask `tower` is the Git client of the same name. Both install `Tower.app`, so the cask declares a conflict with it. Tower needs macOS 26 and the GitHub CLI (`gh`), signed in.
 
 ## What Tower shows
 
@@ -87,6 +95,17 @@ scripts/install.sh
 
 The script runs `release.sh --allow-dirty`, quits a running Tower, replaces `/Applications/Tower.app` with the new build and opens it.
 
+### Publish a release
+
+`.github/workflows/release.yml` and the cask template `packaging/Casks/tower-menubar.rb` publish a version to the Homebrew tap `wilsonfaustino/homebrew-tap`. CI has no Apple credentials, so the maintainer builds the notarized zip on this Mac.
+
+1. Set `MARKETING_VERSION` in `project.yml` to the new version, merge it to `main`, then tag and push: `git tag v<version> && git push origin v<version>`.
+2. The `build` job checks that the tag matches `MARKETING_VERSION`, builds an ad-hoc zip and creates a draft release.
+3. On `main` at the tag, with `.env` set, run `scripts/release.sh`. Then replace the draft asset: `gh release upload v<version> dist/Tower-<version>.zip --clobber`.
+4. Write the release notes and publish the draft.
+5. The `verify` job checks the asset: a valid signature from team `PX9G95LY8C`, a stapled ticket, and `spctl` when the runner has Gatekeeper on. If it fails, fix the asset as in step 3 and re-run the workflow.
+6. The `tap` job copies the cask template into the tap with the new version and sha256, and pushes. It needs the `HOMEBREW_TAP_TOKEN` repo secret: a fine-grained token with contents read and write on `wilsonfaustino/homebrew-tap`.
+
 ## Project layout
 
 | Path | Contents |
@@ -96,11 +115,12 @@ The script runs `release.sh --allow-dirty`, quits a running Tower, replaces `/Ap
 | `CoreTests/` | Unit tests and fixtures for `Core` |
 | `AppTests/` | Unit tests for the store, status item, panel and Settings logic, hosted by the app |
 | `scripts/` | Release and install scripts, coverage conversion for SonarQube |
+| `packaging/Casks/` | Homebrew cask template that the release workflow copies into the tap |
 | `docs/superpowers/` | Specs and implementation plans |
 
 ## Next steps
 
-1. **Later:** GitHub sign-in without `gh`, notarized releases.
+1. **Later:** GitHub sign-in without `gh`. A Settings choice between the tabbed panel and one consolidated page.
 
 Update this list when an item ships or changes.
 
