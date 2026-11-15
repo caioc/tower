@@ -167,7 +167,8 @@ jobs:
           rm -f "$cask_path.bak"
           grep -q "^ *version \"$VERSION\"" "$cask_path" || { echo "error: version line did not update" >&2; exit 1; }
           grep -q "^ *sha256 \"$SHA256\"" "$cask_path" || { echo "error: sha256 line did not update" >&2; exit 1; }
-          if git diff --quiet -- "$cask_path"; then
+          # git status, not git diff: on the first release the cask is a new, untracked file.
+          if [[ -z "$(git status --porcelain -- "$cask_path")" ]]; then
             echo "tap is already up to date"
             exit 0
           fi
