@@ -44,17 +44,19 @@ struct QueueRowView: View {
   private var row: some View {
     HStack(spacing: Theme.Spacing.s) {
       if isGroup {
-        Image(systemName: "chevron.right")
+        Image(PanelSymbol.disclosure.rawValue)
           .font(.system(size: Theme.Metrics.disclosureSize, weight: .semibold))
           .foregroundStyle(isSelected ? Theme.selectionText : Theme.textSecondary)
           .rotationEffect(.degrees(isExpanded ? 90 : 0))
+          // Custom symbols do not mirror by themselves. Flipping after the rotation keeps the expanded caret pointing down.
+          .flipsForRightToLeftLayoutDirection(true)
           .accessibilityHidden(true)
       }
-      Image(systemName: item.symbol.rawValue)
+      Image(item.symbol.rawValue)
         .font(.system(size: Theme.Metrics.symbolSize))
         .foregroundStyle(isSelected ? Theme.selectionText : symbolColor)
         .frame(width: Theme.Metrics.iconColumn)
-        // SF Symbol descriptions ("show", "divide") would mislead; the badge text carries the meaning.
+        // The badge text carries the meaning, so VoiceOver skips the glyph.
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
         Text(item.title)
@@ -90,8 +92,9 @@ struct QueueRowView: View {
       }
       StatusDotView(dot: item.statusDot, isSelected: isSelected)
       // Always in the layout so hover does not change the row width or the title truncation.
-      Image(systemName: "arrow.up.right")
+      Image(PanelSymbol.openArrow.rawValue)
         .font(.system(size: Theme.Metrics.openArrowSize))
+        .flipsForRightToLeftLayoutDirection(true)
         .foregroundStyle(Theme.textSecondary)
         .opacity(isHovered && !isSelected && !isGroup ? 1 : 0)
         .accessibilityHidden(true)
@@ -125,9 +128,17 @@ struct QueueRowView: View {
     return isHovered ? Theme.surfaceHover : .clear
   }
 
-  // Neutral rows stay gray; only failing, urgent and ready rows take the status color.
   private var symbolColor: Color {
-    Theme.statusText(item.badge?.variant ?? .neutral)
+    Theme.statusText(rowSymbolVariant(for: item))
+  }
+}
+
+// Passed or failed checks color the symbol of an authored PR; other rows take their badge color.
+func rowSymbolVariant(for item: QueueItem) -> BadgeVariant {
+  switch item.strip?.checks {
+  case .passed: .ready
+  case .failed: .failing
+  case .running, nil: item.badge?.variant ?? .neutral
   }
 }
 
@@ -244,7 +255,7 @@ struct StatusStripView: View {
     HStack(spacing: 7) {
       if let threads = strip.threads {
         HStack(spacing: Theme.Spacing.xxs) {
-          Image(systemName: "bubble.left")
+          Image(PanelSymbol.threads.rawValue)
           Text("\(threads.unresolvedCount)\(threads.isLowerBound ? "+" : "")")
         }
         .foregroundStyle(glyphColor(Theme.textSecondary))
@@ -264,13 +275,13 @@ struct StatusStripView: View {
     HStack(spacing: -3) {
       ForEach(0..<approvals.slotCount, id: \.self) { index in
         let isGiven = index < approvals.given
-        Image(systemName: isGiven ? "checkmark.circle.fill" : "circle")
+        Image(isGiven ? PanelSymbol.approvalGiven.rawValue : PanelSymbol.approvalMissing.rawValue)
           .foregroundStyle(glyphColor(isGiven ? Theme.statusText(.ready) : Theme.textSecondary))
           .background {
             // Draws after the previous slot and erases where they overlap, so the row fill shows through
             // the gap. A ring painted in the panel color would show as a halo on the material and hover fill.
             if index > 0 {
-              Image(systemName: "circle.fill").scaleEffect(1.3).blendMode(.destinationOut)
+              Image(PanelSymbol.approvalErase.rawValue).scaleEffect(1.3).blendMode(.destinationOut)
             }
           }
       }

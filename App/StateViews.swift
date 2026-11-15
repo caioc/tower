@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct StateMessageView: View {
-  let symbol: String
+  let symbol: PanelSymbol
   let title: String
   let message: String
   var footnote: String?
@@ -10,9 +10,11 @@ struct StateMessageView: View {
 
   var body: some View {
     VStack(spacing: Theme.Spacing.s) {
-      Image(systemName: symbol)
+      Image(symbol.rawValue)
         .font(.system(size: 28))
         .foregroundStyle(Theme.textSecondary)
+        // The title says the same thing, and the asset name would reach VoiceOver.
+        .accessibilityHidden(true)
       Text(title).font(Theme.Fonts.stateTitle).foregroundStyle(Theme.textPrimary)
       Text(message).font(Theme.Fonts.stateBody).foregroundStyle(Theme.textSecondary)
       if let footnote {
@@ -36,10 +38,11 @@ struct AuthBannerView: View {
 
   var body: some View {
     HStack(alignment: .top, spacing: Theme.Spacing.s) {
-      Image(systemName: "key")
+      Image(PanelSymbol.tokenMissing.rawValue)
         .font(.system(size: Theme.Metrics.symbolSize))
         .foregroundStyle(Theme.textSecondary)
         .frame(width: Theme.Metrics.iconColumn)
+        .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
         Text(title).font(Theme.Fonts.rowTitle.weight(.semibold)).foregroundStyle(Theme.textPrimary)
         Text(message).font(Theme.Fonts.stateBody).foregroundStyle(Theme.textSecondary)

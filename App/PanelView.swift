@@ -12,6 +12,8 @@ struct PanelView: View {
   @State private var expandedItemIds: Set<String> = []
   @State private var contentHeight: CGFloat = 0
   @State private var pinnedHeight: CGFloat = 0
+  // The divider and padding above the pinned rows, which show only while the list scrolls.
+  @State private var pinnedEdgeHeight: CGFloat = 0
   @State private var tabPickerHeight: CGFloat = 0
   @FocusState private var isListFocused: Bool
 
@@ -27,10 +29,9 @@ struct PanelView: View {
           content
             .padding(Theme.Spacing.s)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            .background(OverlayScroller())
         }
-        // The tabs, pinned rows and legend share the max height, so the whole panel keeps its cap.
-        .frame(
-          height: min(max(contentHeight, 1), max(Theme.Metrics.panelMaxHeight - tabPickerHeight - pinnedHeight, 1)))
+        .frame(height: min(max(contentHeight, 1), max(scrollAreaMaxHeight - pinnedEdgeHeight, 1)))
         .onChange(of: selectedItemId) { _, newValue in
           if let newValue { proxy.scrollTo(newValue) }
         }
@@ -40,8 +41,16 @@ struct PanelView: View {
         }
       }
       if showsTabs {
-        pinnedContent
-          .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedHeight = $0 }
+        VStack(spacing: 0) {
+          // Rows scroll under this edge, so it needs the same divider as the edge under the tabs.
+          if isListScrolling {
+            Divider()
+          }
+          pinnedContent
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedHeight = $0 }
+            .padding(.top, isListScrolling ? Theme.Spacing.s : 0)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedEdgeHeight = $0 - pinnedHeight }
       }
     }
     .frame(width: Theme.Metrics.panelWidth)
@@ -86,6 +95,14 @@ struct PanelView: View {
     }
   }
 
+  // The tabs, pinned rows and legend share the max height, so the whole panel keeps its cap.
+  // It leaves out the edge above the pinned rows, so the edge that scrolling adds cannot keep the list scrolling.
+  private var scrollAreaMaxHeight: CGFloat {
+    max(Theme.Metrics.panelMaxHeight - tabPickerHeight - pinnedHeight, 1)
+  }
+
+  private var isListScrolling: Bool { contentHeight > scrollAreaMaxHeight }
+
   private var header: some View {
     HStack(spacing: Theme.Spacing.s) {
       VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
@@ -98,14 +115,14 @@ struct PanelView: View {
       Button {
         Task { await store.refresh() }
       } label: {
-        Image(systemName: "arrow.clockwise")
+        Image(PanelSymbol.refresh.rawValue)
       }
       .buttonStyle(.borderless)
       .disabled(store.isRefreshing)
       .help("Refresh")
       .accessibilityLabel("Refresh")
       Button(action: showSettings) {
-        Image(systemName: "gearshape")
+        Image(PanelSymbol.settings.rawValue)
       }
       .buttonStyle(.borderless)
       .help("Settings")
@@ -133,10 +150,10 @@ struct PanelView: View {
       switch selectedTab {
       case .needsYou:
         StateMessageView(
-          symbol: "checkmark.seal", title: "Clear skies", message: "Nothing needs you right now.",
+          symbol: .clearSkies, title: "Clear skies", message: "Nothing needs you right now.",
           footnote: store.todaySummary.map { todaySummaryText(reviews: $0.reviews, merges: $0.merges) })
       case .waiting:
-        StateMessageView(symbol: "hourglass", title: "Nothing waiting", message: "Nothing waiting on others.")
+        StateMessageView(symbol: .nothingWaiting, title: "Nothing waiting", message: "Nothing waiting on others.")
       }
     } else {
       ForEach(tabSections) { section in
@@ -177,7 +194,7 @@ struct PanelView: View {
       if store.githubStatus == .failed(.authentication) {
         TimelineView(.periodic(from: .now, by: 30)) { context in
           AuthBannerView(title: "GitHub sign-in expired", message: store.githubBannerMessage(now: context.date)) {
-            GitHubReconnect.open(ghPath: GhCLITokenProvider().ghPath)
+            if !DemoLaunch.isActive { GitHubReconnect.open(ghPath: GhCLITokenProvider().ghPath) }
           }
         }
       }
@@ -199,7 +216,7 @@ struct PanelView: View {
         tabContent
       case .offline:
         StateMessageView(
-          symbol: "wifi.slash",
+          symbol: .offline,
           title: offlineTitle(sources: [
             ("GitHub", store.githubStatus), ("Jira", store.jiraStatus), ("CircleCI", store.circleciStatus),
           ]),
@@ -207,7 +224,7 @@ struct PanelView: View {
           actionTitle: "Try now") { Task { await store.refresh() } }
       case .failed(let message):
         StateMessageView(
-          symbol: "exclamationmark.triangle", title: "Update failed", message: message,
+          symbol: .updateFailed, title: "Update failed", message: message,
           actionTitle: "Try now") { Task { await store.refresh() } }
       case .loading:
         ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.vertical, Theme.Spacing.xl)

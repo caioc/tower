@@ -77,6 +77,9 @@ enum DismissedPipelinesKeys {
   private let loadGitHubOrganizations: () -> [String]
   private let defaults: UserDefaults
   private var pollingTask: Task<Void, Never>?
+  #if DEBUG
+    private let demoScenario = DemoLaunch.scenario
+  #endif
   private var activationObserver: NSObjectProtocol?
 
   init(
@@ -103,6 +106,12 @@ enum DismissedPipelinesKeys {
   }
 
   func start() {
+    #if DEBUG
+      if let demoScenario {
+        applyDemo(demoScenario)
+        return
+      }
+    #endif
     guard pollingTask == nil else { return }
     loadCache()
     pollingTask = Task { [weak self] in
@@ -155,6 +164,12 @@ enum DismissedPipelinesKeys {
   }
 
   func refresh() async {
+    #if DEBUG
+      if let demoScenario {
+        applyDemo(demoScenario)
+        return
+      }
+    #endif
     guard !isRefreshing else { return }
     isRefreshing = true
     defer { isRefreshing = false }
@@ -214,9 +229,32 @@ enum DismissedPipelinesKeys {
   func dismiss(_ item: QueueItem) {
     guard let dismissal = item.dismissal else { return }
     dismissedPipelines.insert(dismissal)
+    #if DEBUG
+      if demoScenario != nil {
+        rebuild()
+        return
+      }
+    #endif
     DismissedPipelinesKeys.save(dismissedPipelines, defaults: defaults)
     rebuild()
   }
+
+  #if DEBUG
+    // Demo data never touches the cache, the network or saved dismissals.
+    private func applyDemo(_ scenario: DemoScenario) {
+      let now = Date()
+      githubSnapshot = scenario.githubSnapshot
+      jiraTickets = scenario.jiraTickets
+      pipelines = scenario.pipelines
+      githubFetchedAt = scenario.githubSnapshot.map { _ in now }
+      jiraFetchedAt = scenario.jiraTickets.map { _ in now }
+      circleciFetchedAt = scenario.pipelines.map { _ in now }
+      githubStatus = scenario.githubStatus
+      jiraStatus = scenario.jiraStatus
+      circleciStatus = scenario.circleciStatus
+      rebuild()
+    }
+  #endif
 
   private func rebuild() {
     let input = QueueInput(
