@@ -13,8 +13,11 @@ MVP, in daily use by the author. Releases are signed with a Developer ID and not
 ## Install
 
 ```bash
+brew trust wilsonfaustino/tap
 brew install --cask wilsonfaustino/tap/tower-menubar
 ```
+
+Homebrew refuses to load a cask from a third-party tap until you trust the tap, so run `brew trust` once.
 
 The cask is `tower-menubar` because the Homebrew cask `tower` is the Git client of the same name. Both install `Tower.app`, so the cask declares a conflict with it. Tower needs macOS 26 and the GitHub CLI (`gh`), signed in.
 
