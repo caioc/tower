@@ -178,14 +178,14 @@ public struct Badge: Equatable, Sendable {
 }
 
 public enum RowSymbol: String, CaseIterable, Sendable {
-  case failing = "xmark.circle"
-  case review = "eye"
-  case merge = "arrow.triangle.merge"
-  case noPullRequest = "arrow.triangle.branch"
-  case noReviewer = "person.crop.circle.badge.questionmark"
-  case running = "airplane.departure"
-  case approvalHold = "hand.raised"
-  case waiting = "hourglass"
+  case failing = "ph-x-circle"
+  case review = "ph-eye"
+  case merge = "ph-git-merge"
+  case noPullRequest = "ph-git-branch"
+  case noReviewer = "ph-user-circle-dashed"
+  case running = "ph-airplane-takeoff"
+  case approvalHold = "ph-hand-palm"
+  case waiting = "ph-airplane-in-flight"
 }
 
 // The status strip of one authored PR row. A nil part is hidden.

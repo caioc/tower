@@ -98,14 +98,14 @@ struct PanelView: View {
       Button {
         Task { await store.refresh() }
       } label: {
-        Image(systemName: "arrow.clockwise")
+        Image(PanelSymbol.refresh.rawValue)
       }
       .buttonStyle(.borderless)
       .disabled(store.isRefreshing)
       .help("Refresh")
       .accessibilityLabel("Refresh")
       Button(action: showSettings) {
-        Image(systemName: "gearshape")
+        Image(PanelSymbol.settings.rawValue)
       }
       .buttonStyle(.borderless)
       .help("Settings")
@@ -133,10 +133,10 @@ struct PanelView: View {
       switch selectedTab {
       case .needsYou:
         StateMessageView(
-          symbol: "checkmark.seal", title: "Clear skies", message: "Nothing needs you right now.",
+          symbol: .clearSkies, title: "Clear skies", message: "Nothing needs you right now.",
           footnote: store.todaySummary.map { todaySummaryText(reviews: $0.reviews, merges: $0.merges) })
       case .waiting:
-        StateMessageView(symbol: "hourglass", title: "Nothing waiting", message: "Nothing waiting on others.")
+        StateMessageView(symbol: .nothingWaiting, title: "Nothing waiting", message: "Nothing waiting on others.")
       }
     } else {
       ForEach(tabSections) { section in
@@ -199,7 +199,7 @@ struct PanelView: View {
         tabContent
       case .offline:
         StateMessageView(
-          symbol: "wifi.slash",
+          symbol: .offline,
           title: offlineTitle(sources: [
             ("GitHub", store.githubStatus), ("Jira", store.jiraStatus), ("CircleCI", store.circleciStatus),
           ]),
@@ -207,7 +207,7 @@ struct PanelView: View {
           actionTitle: "Try now") { Task { await store.refresh() } }
       case .failed(let message):
         StateMessageView(
-          symbol: "exclamationmark.triangle", title: "Update failed", message: message,
+          symbol: .updateFailed, title: "Update failed", message: message,
           actionTitle: "Try now") { Task { await store.refresh() } }
       case .loading:
         ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.vertical, Theme.Spacing.xl)
