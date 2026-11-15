@@ -33,7 +33,7 @@ struct SettingsView: View {
         SettingsCaption(text: jiraTokenSaveError)
         HStack {
           Button("Test connection", action: testJira)
-            .disabled(isTestingJira)
+            .disabled(isTestingJira || DemoLaunch.isActive)
           if let jiraTestResult {
             Text(jiraTestResult).foregroundStyle(Theme.textSecondary)
           }
@@ -53,7 +53,7 @@ struct SettingsView: View {
           .foregroundStyle(Theme.textSecondary)
         HStack {
           Button("Test connection", action: testCircleCI)
-            .disabled(isTestingCircleCI)
+            .disabled(isTestingCircleCI || DemoLaunch.isActive)
           if let circleciTestResult {
             Text(circleciTestResult).foregroundStyle(Theme.textSecondary)
           }

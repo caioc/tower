@@ -194,7 +194,7 @@ struct PanelView: View {
       if store.githubStatus == .failed(.authentication) {
         TimelineView(.periodic(from: .now, by: 30)) { context in
           AuthBannerView(title: "GitHub sign-in expired", message: store.githubBannerMessage(now: context.date)) {
-            GitHubReconnect.open(ghPath: GhCLITokenProvider().ghPath)
+            if !DemoLaunch.isActive { GitHubReconnect.open(ghPath: GhCLITokenProvider().ghPath) }
           }
         }
       }

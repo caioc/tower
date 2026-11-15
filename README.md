@@ -57,6 +57,12 @@ Run the `Tower` scheme. The cab icon appears in the menu bar. Tower has no Dock 
 
 `project.yml` is the source of the Xcode project. Do not edit `Tower.xcodeproj` by hand; it is generated and gitignored.
 
+To see the panel with fake data, launch a Debug build with `-demo <scenario>`. Demo data makes no network calls and does not write the cache. Scenarios: `typical` (every section), `long-list` (enough rows to scroll), `clear-skies`, `offline`, `auth-failure`.
+
+```bash
+open path/to/Debug/Tower.app --args -demo long-list
+```
+
 ## Set up
 
 - **GitHub:** Tower reads your token from `gh auth token` and keeps it in memory only. If the sign-in expires, click "Reconnect" in the panel. Terminal opens and runs `gh auth login`.
