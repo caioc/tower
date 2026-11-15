@@ -321,6 +321,15 @@ struct PanelKeyOutcomeTests {
     #expect(rowStatusText(for: row(id: "p", checks: .running)) == nil)
   }
 
+  @Test func symbolColorFollowsChecks() {
+    #expect(rowSymbolVariant(for: row(id: "p", badge: Badge(text: "Draft", variant: .neutral), checks: .passed)) == .ready)
+    #expect(rowSymbolVariant(for: row(id: "f", checks: .failed)) == .failing)
+    #expect(
+      rowSymbolVariant(for: row(id: "r", badge: Badge(text: "Changes requested", variant: .urgent), checks: .running))
+        == .urgent)
+    #expect(rowSymbolVariant(for: row(id: "n")) == .neutral)
+  }
+
   @Test func onHoldPipelineIsPinnedFirst() {
     let running = (1...2).map { row(id: "run\($0)", badge: Badge(text: "Running", variant: .neutral)) }
     let onHold = row(id: "hold", badge: Badge(text: "Needs approval", variant: .urgent))

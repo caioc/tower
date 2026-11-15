@@ -128,9 +128,17 @@ struct QueueRowView: View {
     return isHovered ? Theme.surfaceHover : .clear
   }
 
-  // Neutral rows stay gray; only failing, urgent and ready rows take the status color.
   private var symbolColor: Color {
-    Theme.statusText(item.badge?.variant ?? .neutral)
+    Theme.statusText(rowSymbolVariant(for: item))
+  }
+}
+
+// Passed or failed checks color the symbol of an authored PR; other rows take their badge color.
+func rowSymbolVariant(for item: QueueItem) -> BadgeVariant {
+  switch item.strip?.checks {
+  case .passed: .ready
+  case .failed: .failing
+  case .running, nil: item.badge?.variant ?? .neutral
   }
 }
 
