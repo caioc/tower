@@ -112,18 +112,30 @@ struct TabItemCountTests {
 
 struct SelectableRowsTests {
   @Test func collapsedGroupsHideTheirChildrenAndWatchRowsFollowTheTab() {
-    let rows = selectableRows(in: tabSections, tab: .needsYou, expandedItemIds: [])
+    let rows = selectableRows(in: tabSections, layout: .split, tab: .needsYou, expandedItemIds: [])
     #expect(rows.map(\.id) == ["r1", "bot", "t1", "w1", "w2"])
   }
 
   @Test func expandedChildrenFollowTheirGroup() {
-    let rows = selectableRows(in: tabSections, tab: .needsYou, expandedItemIds: ["bot"])
+    let rows = selectableRows(in: tabSections, layout: .split, tab: .needsYou, expandedItemIds: ["bot"])
     #expect(rows.map(\.id) == ["r1", "bot", "bot-1", "bot-2", "t1", "w1", "w2"])
   }
 
   @Test func waitingTabAlsoEndsWithThePinnedWatchRows() {
-    let rows = selectableRows(in: tabSections, tab: .waiting, expandedItemIds: [])
+    let rows = selectableRows(in: tabSections, layout: .split, tab: .waiting, expandedItemIds: [])
     #expect(rows.map(\.id) == ["p1", "w1", "w2"])
+  }
+
+  @Test func consolidatedGoesThroughEveryRowInUrgencyOrderWithAllWatchRows() {
+    for tab in PanelTab.allCases {
+      let rows = selectableRows(in: tabSections, layout: .consolidated, tab: tab, expandedItemIds: [])
+      #expect(rows.map(\.id) == ["r1", "bot", "t1", "w1", "w2", "w3", "p1"])
+    }
+  }
+
+  @Test func consolidatedExpandedChildrenFollowTheirGroup() {
+    let rows = selectableRows(in: tabSections, layout: .consolidated, tab: .needsYou, expandedItemIds: ["bot"])
+    #expect(rows.map(\.id) == ["r1", "bot", "bot-1", "bot-2", "t1", "w1", "w2", "w3", "p1"])
   }
 
   @Test func pinnedWatchRowsStopAtTheLimit() {

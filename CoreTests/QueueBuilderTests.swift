@@ -510,6 +510,42 @@ struct PanelTabTests {
   }
 }
 
+struct PanelLayoutTests {
+  private let allKindsQueue = queue(
+    authored: [
+      pullRequest(number: 1, reviewDecision: .approved), pullRequest(number: 2, checkState: .failure, failedCheckCount: 1),
+      pullRequest(number: 3),
+    ],
+    reviewRequests: [pullRequest(number: 4, author: "Ana", requestedReviewerLogins: ["me"], reviewRequestedHoursAgo: 2)],
+    tickets: [ticket(key: "PROJ-9")],
+    pipelines: [pipeline(state: .running)])
+
+  @Test func splitShowsTheSectionsOfTheTab() {
+    for tab in PanelTab.allCases {
+      #expect(
+        displayedSections(allKindsQueue, layout: .split, tab: tab).map(\.kind)
+          == Core.sections(allKindsQueue, in: tab).map(\.kind))
+    }
+  }
+
+  @Test func consolidatedShowsEverySectionInUrgencyOrderOnBothTabs() {
+    for tab in PanelTab.allCases {
+      #expect(
+        displayedSections(allKindsQueue, layout: .consolidated, tab: tab).map(\.kind)
+          == [.fix, .review, .merge, .tidy, .watch, .waiting])
+    }
+  }
+
+  @Test func consolidatedWithNoRowsShowsNoSections() {
+    #expect(displayedSections([], layout: .consolidated, tab: .needsYou).isEmpty)
+  }
+
+  @Test func layoutTitlesAndStoredValues() {
+    #expect(PanelLayout.allCases.map(\.title) == ["Split", "Consolidated"])
+    #expect(PanelLayout.allCases.map(\.rawValue) == ["split", "consolidated"])
+  }
+}
+
 private func strip(_ pullRequest: PullRequest) -> StatusStrip? {
   queue(authored: [pullRequest]).flatMap(\.items).first?.strip
 }
