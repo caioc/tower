@@ -129,7 +129,7 @@ The script runs `release.sh --allow-dirty`, quits a running Tower, replaces `/Ap
 
 ## Next steps
 
-1. **Later:** GitHub sign-in without `gh`. A Settings choice between the tabbed panel and one consolidated page.
+1. **Later:** GitHub sign-in without `gh`. A redesign of the Settings window (#67).
 
 Update this list when an item ships or changes.
 
