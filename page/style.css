@@ -1,0 +1,796 @@
+/* Colors from the app icon plate and Theme.swift. Color only means urgency: red, amber and green appear only on rows and dots. */
+:root {
+  --night: #111A31;
+  --night-raised: #18233F;
+  --horizon: #2E4374;
+  --glass: #E6ECF6;
+  --haze: #A7B2C8;
+  --beacon: #FFB340;
+  --fail: #FF8A80;
+  --ready: #5BE07A;
+  --display: "B612", -apple-system, BlinkMacSystemFont, sans-serif;
+  --system: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--glass);
+  font-family: var(--system);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--glass);
+  text-decoration-color: rgba(230, 236, 246, 0.4);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-color: var(--glass);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--glass);
+  outline-offset: 2px;
+}
+
+code,
+pre {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd,
+pre {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 128px;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 28px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 18px;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+  font-size: 15px;
+}
+
+/* Hero */
+
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 56px;
+}
+
+.hero-text {
+  flex: 1 1 440px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 40px;
+}
+
+h1 {
+  font-size: 46px;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+
+.lead {
+  font-size: 19px;
+  color: var(--haze);
+  max-width: 34em;
+}
+
+.install-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 18px;
+  border: 1px solid var(--horizon);
+  border-radius: 10px;
+  background: var(--night-raised);
+}
+
+.install-box pre {
+  flex: 1 1 300px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.install-box button {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--glass);
+  color: var(--night);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.note {
+  font-size: 14px;
+  color: var(--haze);
+}
+
+.note code {
+  color: var(--glass);
+}
+
+/* Panel replica. Sizes follow Theme.swift: 420 wide, 12 radius, rows 40 tall, macOS body 13 and subheadline 11. */
+
+.desk {
+  flex: 0 1 452px;
+  min-width: 0;
+  margin-left: auto;
+  font-family: var(--system);
+  line-height: 1.25;
+}
+
+.menubar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 8px 8px 0 0;
+  background: rgba(46, 67, 116, 0.55);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.menubar i {
+  font-size: 16px;
+}
+
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+  background: rgba(230, 236, 246, 0.2);
+}
+
+.panel {
+  width: 420px;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 0 auto;
+  padding-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #1E2538;
+  box-shadow: 0 24px 60px rgba(4, 8, 20, 0.6);
+  font-size: 13px;
+  transform-origin: top right;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.panel-title {
+  font-weight: 600;
+}
+
+.panel-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.panel-tools {
+  display: flex;
+  gap: 12px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.tabs {
+  display: flex;
+  margin: 0 16px 8px;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tabs button {
+  flex: 1;
+  min-height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--glass);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tabs button[aria-selected="true"] {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.panel-list,
+.panel-pinned {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.panel-list[hidden] {
+  display: none;
+}
+
+.panel-pinned {
+  margin-top: 8px;
+}
+
+.q-head {
+  display: flex;
+  gap: 8px;
+  padding: 8px 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.q-head span {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.q-card {
+  padding: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 6px;
+  border-radius: 8px;
+}
+
+button.row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.caret {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.62);
+  transition: transform 0.15s ease;
+}
+
+.row[aria-expanded="true"] .caret {
+  transform: rotate(90deg);
+}
+
+.children {
+  padding-left: 20px;
+}
+
+.children[hidden] {
+  display: none;
+}
+
+.sym {
+  flex: 0 0 20px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row-title,
+.row-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.row-meta {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.tag {
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.strip {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+  vertical-align: -1px;
+}
+
+.strip > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.status {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.dot {
+  flex: 0 0 8px;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 17px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.is-fail {
+  color: var(--fail);
+}
+
+.is-urgent {
+  color: var(--beacon);
+}
+
+.is-ready {
+  color: var(--ready);
+}
+
+.dot.is-fail {
+  background: var(--fail);
+}
+
+.dot.is-urgent {
+  background: var(--beacon);
+}
+
+.dot.is-ready {
+  background: var(--ready);
+}
+
+.dot.is-pending {
+  border: 1.5px solid rgba(255, 255, 255, 0.62);
+}
+
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  padding-top: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend .dot {
+  margin: 0;
+}
+
+.desk-caption {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--haze);
+  text-align: right;
+}
+
+/* Urgency order */
+
+.order {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 56px;
+}
+
+.order-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.order h2,
+.icons h2,
+.sources h2 {
+  font-size: 34px;
+  line-height: 1.2;
+}
+
+.order-intro p,
+.icons-text p {
+  color: var(--haze);
+  max-width: 30em;
+}
+
+/* The six sections are a real sequence, so the list keeps its numbers. */
+.order-list {
+  counter-reset: urgency;
+  border-left: 2px solid var(--horizon);
+}
+
+.order-list li {
+  counter-increment: urgency;
+  display: grid;
+  grid-template-columns: 40px 120px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 16px 0 16px 24px;
+}
+
+.order-list li::before {
+  content: counter(urgency);
+  font-family: var(--display);
+  font-size: 15px;
+  color: var(--haze);
+}
+
+.order-list h3 {
+  font-size: 24px;
+}
+
+.order-list p {
+  color: var(--haze);
+}
+
+/* Menu bar states */
+
+.icons {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.icons-text {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.icon-states {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 40px;
+}
+
+.icon-states li {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mini-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 64px;
+  padding: 0 20px;
+  border-radius: 10px;
+  background: rgba(46, 67, 116, 0.55);
+  font-size: 30px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.icon-states p {
+  color: var(--haze);
+}
+
+.icon-states strong {
+  display: block;
+  font-family: var(--display);
+  color: var(--glass);
+}
+
+/* Details */
+
+.details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+  gap: 56px;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail h2 {
+  font-size: 26px;
+  line-height: 1.25;
+}
+
+.detail p {
+  color: var(--haze);
+  max-width: 32em;
+}
+
+/* Sources */
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.source-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 32px;
+}
+
+.source-list dt {
+  margin-bottom: 8px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 19px;
+}
+
+.source-list dt span {
+  margin-left: 6px;
+  font-family: var(--system);
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--haze);
+}
+
+.source-list dd {
+  color: var(--haze);
+}
+
+.source-list code {
+  color: var(--glass);
+  font-size: 0.9em;
+}
+
+/* Privacy */
+
+.privacy {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 48px;
+  border-radius: 14px;
+  background: var(--night-raised);
+  border: 1px solid var(--horizon);
+}
+
+.privacy h2 {
+  font-size: 30px;
+}
+
+.privacy p {
+  font-size: 18px;
+  color: var(--haze);
+  max-width: 38em;
+}
+
+/* Install */
+
+.install {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.install h2 {
+  font-size: 38px;
+}
+
+.install pre {
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 16px 22px;
+  border: 1px solid var(--horizon);
+  border-radius: 10px;
+  background: var(--night-raised);
+  font-size: 15px;
+  line-height: 1.7;
+  text-align: left;
+  overflow-x: auto;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 32px 0 48px;
+  border-top: 1px solid var(--horizon);
+  font-size: 14px;
+  color: var(--haze);
+}
+
+/* The one load moment: the status item highlights, then the panel opens below it, as when you click it. */
+@media (prefers-reduced-motion: no-preference) {
+  .status-item {
+    animation: status-click 0.6s ease-out 0.5s both;
+  }
+
+  .panel {
+    animation: panel-open 0.32s cubic-bezier(0.2, 0.9, 0.3, 1) 0.75s both;
+  }
+}
+
+@keyframes status-click {
+  from {
+    background: transparent;
+  }
+
+  to {
+    background: rgba(230, 236, 246, 0.2);
+  }
+}
+
+@keyframes panel-open {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .order {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .desk {
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    font-size: 16px;
+  }
+
+  .page {
+    padding: 0 16px;
+    gap: 88px;
+  }
+
+  .hero {
+    gap: 40px;
+  }
+
+  .hero-text {
+    padding-top: 16px;
+  }
+
+  h1 {
+    font-size: 32px;
+  }
+
+  .order h2,
+  .icons h2,
+  .sources h2 {
+    font-size: 26px;
+  }
+
+  .order-list li {
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding-left: 16px;
+  }
+
+  .order-list p {
+    grid-column: 2;
+  }
+
+  .privacy {
+    padding: 28px 20px;
+  }
+
+  .install h2 {
+    font-size: 28px;
+  }
+
+  .install pre {
+    font-size: 13px;
+  }
+}
