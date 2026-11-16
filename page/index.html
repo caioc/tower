@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tower, a menu bar queue for GitHub and Jira</title>
+  <meta name="description" content="Tower is a macOS menu bar app that shows one queue of the GitHub pull requests, Jira tickets and CircleCI pipelines that need you now, sorted by urgency.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Tower, a menu bar queue for GitHub and Jira">
+  <meta property="og:description" content="Tower is a macOS menu bar app that shows one queue of the GitHub pull requests, Jira tickets and CircleCI pipelines that need you now, sorted by urgency.">
+  <meta property="og:url" content="https://wilsonfaustino.github.io/tower/">
+  <meta property="og:image" content="https://wilsonfaustino.github.io/tower/assets/og-icon.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta name="twitter:card" content="summary">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=B612:wght@400;700&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page">
+
+    <nav class="nav" aria-label="Main">
+      <a class="brand" href="#top">
+        <svg width="22" height="22" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="1.75" r="1.5" fill="currentColor"/><path d="M2.75 4.75H15.25L13.25 10.75H4.75Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.75 10.75V16M11.25 10.75V16" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.75 16.75H13.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Tower
+      </a>
+      <div class="nav-links">
+        <a href="#privacy">Privacy</a>
+        <a href="https://github.com/wilsonfaustino/tower">GitHub</a>
+      </div>
+    </nav>
+
+    <section class="hero" id="top">
+      <div class="hero-text">
+        <h1>The pull requests and tickets that need you, in the order to do them.</h1>
+        <p class="lead">Tower is a macOS menu bar app. It puts your GitHub pull requests, Jira tickets and CircleCI pipelines in one queue, sorted by urgency. Open the panel, see what to do next, and click through to it.</p>
+        <div class="install-box">
+          <pre id="brew-command"><code>brew trust wilsonfaustino/tap
+brew install --cask wilsonfaustino/tap/tower-menubar</code></pre>
+          <button type="button" id="copy-button">Copy</button>
+        </div>
+        <p class="note">macOS 26 or later, with the GitHub CLI (<code>gh</code>) signed in. Signed and notarized by Apple. <a href="https://github.com/wilsonfaustino/tower/releases/latest">Latest release</a>.</p>
+        <p class="note">The cask is <code>tower-menubar</code> because <code>tower</code> is the Git client of the same name.</p>
+      </div>
+
+      <div class="desk" aria-label="The Tower panel with sample data">
+        <div class="menubar" aria-hidden="true">
+          <i class="ph-bold ph-battery-high"></i>
+          <i class="ph-bold ph-wifi-high"></i>
+          <span class="status-item">
+            <svg width="18" height="18" viewBox="0 0 18 18"><defs><mask id="cab-hero-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="18" height="18"><rect width="18" height="18" fill="#fff"/><rect x="8" y="5.5" width="2" height="3" fill="#000"/><rect x="8" y="9.5" width="2" height="1" fill="#000"/></mask></defs><circle cx="9" cy="1.75" r="1.5" fill="currentColor"/><path d="M2.75 4.75H15.25L13.25 10.75H4.75Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" mask="url(#cab-hero-mask)"/><path d="M6.75 10.75V16M11.25 10.75V16" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.75 16.75H13.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            2
+          </span>
+          <span class="clock">Sun 9:41</span>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-title">Tower</p>
+              <p class="panel-sub">Updated just now</p>
+            </div>
+            <span class="panel-tools" aria-hidden="true"><i class="ph-bold ph-arrow-clockwise"></i><i class="ph-bold ph-gear-six"></i></span>
+          </div>
+
+          <div class="tabs" role="tablist" aria-label="Panel tabs">
+            <button type="button" role="tab" id="tab-needs" aria-selected="true" aria-controls="list-needs">Needs you 8</button>
+            <button type="button" role="tab" id="tab-waiting" aria-selected="false" aria-controls="list-waiting" tabindex="-1">Waiting 6</button>
+          </div>
+
+          <div class="panel-list" id="list-needs" role="tabpanel" aria-labelledby="tab-needs">
+            <div class="q-section">
+              <p class="q-head">Fix <span>2</span></p>
+              <ul class="q-card">
+                <li class="row">
+                  <i class="ph-bold ph-x-circle sym is-fail"></i>
+                  <div class="row-main">
+                    <p class="row-title">Fix flaky date parser in sync job</p>
+                    <p class="row-meta"><span class="tag">demo-org/api</span>#412 · 3h <span class="strip"><i class="ph-bold ph-x-circle is-fail"></i><span><i class="ph-bold ph-chat-circle"></i>2</span><span><i class="ph-fill ph-check-circle"></i><i class="ph-bold ph-circle"></i></span></span></p>
+                  </div>
+                  <span class="status is-fail">2 checks failed</span><span class="dot is-fail"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-x-circle sym is-fail"></i>
+                  <div class="row-main">
+                    <p class="row-title">main</p>
+                    <p class="row-meta"><span class="tag">tower</span>#880 · branch · 42m</p>
+                  </div>
+                  <span class="status is-fail">Pipeline failed</span><span class="dot is-fail"></span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="q-section">
+              <p class="q-head">Review <span>3</span></p>
+              <ul class="q-card">
+                <li class="row-group">
+                  <button type="button" class="row is-group" aria-expanded="false" aria-controls="bot-children">
+                    <i class="ph-bold ph-caret-right caret"></i>
+                    <i class="ph-bold ph-eye sym"></i>
+                    <span class="row-main">
+                      <span class="row-title">3 Dependabot PRs</span>
+                      <span class="row-meta"><span class="tag">bot</span>3 repos · 8d</span>
+                    </span>
+                    <span class="status is-urgent">needs you</span><span class="dot is-urgent"></span>
+                  </button>
+                  <ul class="children" id="bot-children" hidden>
+                    <li class="row">
+                      <i class="ph-bold ph-eye sym is-urgent"></i>
+                      <div class="row-main">
+                        <p class="row-title">build(deps): bump flask from 2.3.3 to 3.1.3</p>
+                        <p class="row-meta"><span class="tag">demo-org/api</span>#501 · dependabot[bot] · 8d</p>
+                      </div>
+                      <span class="status is-urgent">Waiting 8d</span><span class="dot is-urgent"></span>
+                    </li>
+                    <li class="row">
+                      <i class="ph-bold ph-eye sym is-urgent"></i>
+                      <div class="row-main">
+                        <p class="row-title">build(deps): bump vite from 5.4.0 to 6.0.1</p>
+                        <p class="row-meta"><span class="tag">demo-org/web</span>#502 · dependabot[bot] · 5d</p>
+                      </div>
+                      <span class="status is-urgent">Waiting 5d</span><span class="dot is-urgent"></span>
+                    </li>
+                    <li class="row">
+                      <i class="ph-bold ph-eye sym is-urgent"></i>
+                      <div class="row-main">
+                        <p class="row-title">chore(deps): bump urllib3 from 2.0.7 to 2.7.0</p>
+                        <p class="row-meta"><span class="tag">demo-org/infra</span>#503 · dependabot[bot] · 3d</p>
+                      </div>
+                      <span class="status is-urgent">Waiting 3d</span><span class="dot is-urgent"></span>
+                    </li>
+                  </ul>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-eye sym is-urgent"></i>
+                  <div class="row-main">
+                    <p class="row-title">Add keychain migration for Jira token</p>
+                    <p class="row-meta"><span class="tag">demo-org/api</span>#128 · alice · 1d</p>
+                  </div>
+                  <span class="status is-urgent">Waiting 1d</span><span class="dot is-urgent"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-eye sym"></i>
+                  <div class="row-main">
+                    <p class="row-title">Move settings into a sheet</p>
+                    <p class="row-meta"><span class="tag">demo-org/web</span>#301 · bruno · 3h · team frontend</p>
+                  </div>
+                  <span class="dot is-pending"></span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="q-section">
+              <p class="q-head">Merge <span>1</span></p>
+              <ul class="q-card">
+                <li class="row">
+                  <i class="ph-bold ph-git-merge sym is-ready"></i>
+                  <div class="row-main">
+                    <p class="row-title">Release workflow and Homebrew cask</p>
+                    <p class="row-meta"><span class="tag">demo-org/tower</span>#63 · 2h <span class="strip"><i class="ph-bold ph-check-circle is-ready"></i><span><i class="ph-fill ph-check-circle"></i><i class="ph-fill ph-check-circle"></i></span></span></p>
+                  </div>
+                  <span class="status is-ready">Approved</span><span class="dot is-ready"></span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="q-section">
+              <p class="q-head">Tidy <span>2</span></p>
+              <ul class="q-card">
+                <li class="row">
+                  <i class="ph-bold ph-git-branch sym"></i>
+                  <div class="row-main">
+                    <p class="row-title">Tidy settings layout</p>
+                    <p class="row-meta"><span class="tag">DEMO-45</span>In Progress · 2d</p>
+                  </div>
+                  <span class="status">No PR</span><span class="dot is-pending"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-user-circle-dashed sym"></i>
+                  <div class="row-main">
+                    <p class="row-title">Cache CircleCI pipelines</p>
+                    <p class="row-meta"><span class="tag">DEMO-38</span>In Progress · 5h</p>
+                  </div>
+                  <span class="status">No reviewer</span><span class="dot is-pending"></span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel-list" id="list-waiting" role="tabpanel" aria-labelledby="tab-waiting" hidden>
+            <div class="q-section">
+              <p class="q-head">Waiting <span>6</span></p>
+              <ul class="q-card">
+                <li class="row">
+                  <i class="ph-bold ph-airplane-in-flight sym"></i>
+                  <div class="row-main">
+                    <p class="row-title">chore · 3 PRs</p>
+                    <p class="row-meta"><span class="tag">demo-org/infra</span>1d</p>
+                  </div>
+                  <span class="status is-fail">failing</span><span class="dot is-fail"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-airplane-in-flight sym is-ready"></i>
+                  <div class="row-main">
+                    <p class="row-title">Rename the billing webhook fields</p>
+                    <p class="row-meta"><span class="tag">demo-org/api</span>#415 · 1d <span class="strip"><i class="ph-bold ph-check-circle is-ready"></i><span><i class="ph-bold ph-chat-circle"></i>3</span><span><i class="ph-bold ph-circle"></i></span></span></p>
+                  </div>
+                  <span class="status is-urgent">Changes requested</span><span class="dot is-urgent"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-airplane-in-flight sym is-fail"></i>
+                  <div class="row-main">
+                    <p class="row-title">Try a denser row layout</p>
+                    <p class="row-meta"><span class="tag">demo-org/tower</span>#67 · 8h <span class="strip"><i class="ph-bold ph-x-circle is-fail"></i></span></p>
+                  </div>
+                  <span class="status">Draft · <span class="is-fail">failing</span></span><span class="dot is-fail"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-airplane-in-flight sym is-ready"></i>
+                  <div class="row-main">
+                    <p class="row-title">Menu bar beacon count</p>
+                    <p class="row-meta"><span class="tag">demo-org/tower</span>#66 · 6h <span class="strip"><i class="ph-bold ph-check-circle is-ready"></i></span></p>
+                  </div>
+                  <span class="status">Draft</span><span class="dot is-ready"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-airplane-in-flight sym is-ready"></i>
+                  <div class="row-main">
+                    <p class="row-title">Add keyboard navigation to the queue</p>
+                    <p class="row-meta"><span class="tag">demo-org/web</span>#220 · 5h <span class="strip"><i class="ph-bold ph-check-circle is-ready"></i><span><i class="ph-bold ph-chat-circle"></i>1</span><span><i class="ph-bold ph-circle"></i></span></span></p>
+                  </div>
+                  <span class="dot is-ready"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-airplane-in-flight sym"></i>
+                  <div class="row-main">
+                    <p class="row-title">Cache avatars on disk</p>
+                    <p class="row-meta"><span class="tag">demo-org/web</span>#221 · 4h <span class="strip"><i class="ph-bold ph-circle-notch"></i><span><i class="ph-bold ph-circle"></i></span></span></p>
+                  </div>
+                  <span class="dot is-pending"></span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel-pinned">
+            <div class="q-section">
+              <p class="q-head">Watch <span>2</span></p>
+              <ul class="q-card">
+                <li class="row">
+                  <i class="ph-bold ph-hand-palm sym is-urgent"></i>
+                  <div class="row-main">
+                    <p class="row-title">release</p>
+                    <p class="row-meta"><span class="tag">tower</span>#881 · branch · 12m</p>
+                  </div>
+                  <span class="status is-urgent">Needs approval</span><span class="dot is-urgent"></span>
+                </li>
+                <li class="row">
+                  <i class="ph-bold ph-airplane-takeoff sym"></i>
+                  <div class="row-main">
+                    <p class="row-title">feat/today-summary</p>
+                    <p class="row-meta"><span class="tag">api</span>#1204 · branch · 3m</p>
+                  </div>
+                  <span class="status">Running</span><span class="dot is-pending"></span>
+                </li>
+              </ul>
+            </div>
+            <p class="legend"><span><span class="dot is-fail"></span>failing</span><span><span class="dot is-urgent"></span>needs you</span><span><span class="dot is-ready"></span>passing</span><span><span class="dot is-pending"></span>pending</span></p>
+          </div>
+        </div>
+        <p class="desk-caption">Sample data. Click the tabs, or the Dependabot row to expand it.</p>
+      </div>
+    </section>
+
+    <section class="order" aria-labelledby="order-title">
+      <div class="order-intro">
+        <h2 id="order-title">Six sections, in the order you act on them.</h2>
+        <p>The order is fixed, so the top row is always the next thing to do. Tower hides a section with no items. When all of them are empty, the panel says "Clear skies".</p>
+      </div>
+      <ol class="order-list">
+        <li><h3>Fix</h3><p>Your open PRs with failing checks, and your failed CircleCI pipelines that have no PR.</p></li>
+        <li><h3>Review</h3><p>PRs that ask for your review. A direct request turns urgent after 24 hours. Dependabot and Renovate PRs collapse into one row per bot.</p></li>
+        <li><h3>Merge</h3><p>Your approved PRs with no failing checks.</p></li>
+        <li><h3>Tidy</h3><p>Your in-progress Jira tickets with no PR, or with a PR that has no reviewer.</p></li>
+        <li><h3>Watch</h3><p>Your running CircleCI pipelines that have no PR. A pipeline on hold for approval is urgent.</p></li>
+        <li><h3>Waiting</h3><p>Your other open PRs: drafts, and PRs that wait for review. Changes requested is urgent. Merged PRs leave the list.</p></li>
+      </ol>
+    </section>
+
+    <section class="icons" aria-labelledby="icons-title">
+      <div class="icons-text">
+        <h2 id="icons-title">The icon changes shape, not color.</h2>
+        <p>You read the menu bar without opening the panel. Each state has its own shape, so it works in a light or dark menu bar and does not depend on color.</p>
+      </div>
+      <ul class="icon-states">
+        <li>
+          <span class="mini-bar" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 18 18"><path d="M2.75 4.75H15.25L13.25 10.75H4.75Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.75 10.75V16M11.25 10.75V16" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.75 16.75H13.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+          <p><strong>Cab</strong> Nothing is urgent.</p>
+        </li>
+        <li>
+          <span class="mini-bar" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 18 18"><circle cx="9" cy="1.75" r="1.5" fill="currentColor"/><path d="M2.75 4.75H15.25L13.25 10.75H4.75Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.75 10.75V16M11.25 10.75V16" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.75 16.75H13.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>3</span>
+          <p><strong>Beacon and a count</strong> Three items need you: a review that waits, changes requested, or a pipeline on hold.</p>
+        </li>
+        <li>
+          <span class="mini-bar" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 18 18"><defs><mask id="cab-fix-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="18" height="18"><rect width="18" height="18" fill="#fff"/><rect x="8" y="5.5" width="2" height="3" fill="#000"/><rect x="8" y="9.5" width="2" height="1" fill="#000"/></mask></defs><circle cx="9" cy="1.75" r="1.5" fill="currentColor"/><path d="M2.75 4.75H15.25L13.25 10.75H4.75Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" mask="url(#cab-fix-mask)"/><path d="M6.75 10.75V16M11.25 10.75V16" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.75 16.75H13.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>2</span>
+          <p><strong>Filled cab and a count</strong> Two items to fix: failing checks or a failed pipeline.</p>
+        </li>
+      </ul>
+    </section>
+
+    <section class="details" aria-label="How Tower works">
+      <div class="detail">
+        <h2>Old data beats an empty panel.</h2>
+        <p>Tower refreshes every 5 minutes, and every 2 minutes when all sources are offline. It keeps the last good result of each source on disk. When GitHub, Jira or CircleCI fails, the panel keeps the old rows and the header tells you their age.</p>
+      </div>
+      <div class="detail">
+        <h2>Two tabs or one page.</h2>
+        <p>Split shows a "Needs you" tab and a "Waiting" tab, with running pipelines pinned below both. Consolidated shows every section on one scrolling page. Pick one in Settings.</p>
+      </div>
+    </section>
+
+    <section class="sources" aria-labelledby="sources-title">
+      <h2 id="sources-title">Set up in Settings</h2>
+      <dl class="source-list">
+        <div>
+          <dt>GitHub</dt>
+          <dd>Tower reads your token from <code>gh auth token</code>. No extra sign-in. To limit the queue to some owners, enter one organization or user login per line.</dd>
+        </div>
+        <div>
+          <dt>Jira <span>optional</span></dt>
+          <dd>Enter your site URL, email and an API token, then click "Test connection".</dd>
+        </div>
+        <div>
+          <dt>CircleCI <span>optional</span></dt>
+          <dd>Enter an API token and one project slug per line, like <code>gh/org/repo</code>.</dd>
+        </div>
+        <div>
+          <dt>Launch at login</dt>
+          <dd>Copy Tower to <code>/Applications</code>, then turn it on in Settings, General. It is off by default.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="privacy" id="privacy">
+      <h2>Three hosts. No analytics.</h2>
+      <p>Tower calls api.github.com, your Jira site and circleci.com. It has no server and no account of its own. The GitHub token stays in memory. The Jira and CircleCI tokens stay in the macOS Keychain.</p>
+    </section>
+
+    <section class="install" aria-labelledby="install-title">
+      <h2 id="install-title">Put the queue in your menu bar.</h2>
+      <pre><code>brew trust wilsonfaustino/tap
+brew install --cask wilsonfaustino/tap/tower-menubar</code></pre>
+      <p class="note">Homebrew loads a cask from a third-party tap only after you trust the tap, so run <code>brew trust</code> once.</p>
+    </section>
+
+    <footer class="footer">
+      <span>Made by Wilson Faustino. A sibling of <a href="https://wilsonfaustino.github.io/copilot-runway/">Copilot Runway</a>.</span>
+      <a href="https://github.com/wilsonfaustino/tower">github.com/wilsonfaustino/tower</a>
+    </footer>
+
+  </div>
+  <script>
+    var copyButton = document.getElementById("copy-button");
+    var brewCommand = document.getElementById("brew-command");
+    function showCopyFallback() {
+      var range = document.createRange();
+      range.selectNodeContents(brewCommand);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      copyButton.textContent = "Press Cmd+C";
+      setTimeout(function () { copyButton.textContent = "Copy"; }, 3000);
+    }
+    copyButton.addEventListener("click", function () {
+      if (!navigator.clipboard) { showCopyFallback(); return; }
+      navigator.clipboard.writeText(brewCommand.textContent).then(function () {
+        copyButton.textContent = "Copied";
+        setTimeout(function () { copyButton.textContent = "Copy"; }, 2000);
+      }, showCopyFallback);
+    });
+
+    var panelTabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+    function selectTab(selectedTab) {
+      panelTabs.forEach(function (tab) {
+        var isSelected = tab === selectedTab;
+        tab.setAttribute("aria-selected", String(isSelected));
+        tab.tabIndex = isSelected ? 0 : -1;
+        document.getElementById(tab.getAttribute("aria-controls")).hidden = !isSelected;
+      });
+    }
+    panelTabs.forEach(function (tab, tabIndex) {
+      tab.addEventListener("click", function () { selectTab(tab); });
+      tab.addEventListener("keydown", function (event) {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") { return; }
+        var nextTab = panelTabs[(tabIndex + 1) % panelTabs.length];
+        selectTab(nextTab);
+        nextTab.focus();
+      });
+    });
+
+    var groupRow = document.querySelector(".row.is-group");
+    groupRow.addEventListener("click", function () {
+      var isExpanded = groupRow.getAttribute("aria-expanded") === "true";
+      groupRow.setAttribute("aria-expanded", String(!isExpanded));
+      document.getElementById("bot-children").hidden = isExpanded;
+    });
+  </script>
+</body>
+</html>
