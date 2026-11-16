@@ -9,6 +9,7 @@ struct PanelView: View {
   @State private var selectedItemId: String?
   @State private var popoverItemId: String?
   @State private var selectedTab = PanelTab.needsYou
+  @AppStorage(PanelSettingsKeys.layout) private var layout = PanelLayout.split
   @State private var expandedItemIds: Set<String> = []
   @State private var contentHeight: CGFloat = 0
   @State private var pinnedHeight: CGFloat = 0
@@ -40,7 +41,7 @@ struct PanelView: View {
           if newValue == nil { isListFocused = true }
         }
       }
-      if showsTabs {
+      if showsQueue {
         VStack(spacing: 0) {
           // Rows scroll under this edge, so it needs the same divider as the edge under the tabs.
           if isListScrolling {
@@ -54,11 +55,8 @@ struct PanelView: View {
       }
     }
     .frame(width: Theme.Metrics.panelWidth)
-    .onChange(of: selectedTab) {
-      selectedItemId = nil
-      popoverItemId = nil
-      isListFocused = true
-    }
+    .onChange(of: selectedTab) { clearSelection() }
+    .onChange(of: layout) { clearSelection() }
     .focusable()
     .focusEffectDisabled()
     .focused($isListFocused)
@@ -98,7 +96,8 @@ struct PanelView: View {
   // The tabs, pinned rows and legend share the max height, so the whole panel keeps its cap.
   // It leaves out the edge above the pinned rows, so the edge that scrolling adds cannot keep the list scrolling.
   private var scrollAreaMaxHeight: CGFloat {
-    max(Theme.Metrics.panelMaxHeight - tabPickerHeight - pinnedHeight, 1)
+    // The picker height keeps its last value after a switch to Consolidated, so count it only while it shows.
+    max(Theme.Metrics.panelMaxHeight - (showsTabs ? tabPickerHeight : 0) - pinnedHeight, 1)
   }
 
   private var isListScrolling: Bool { contentHeight > scrollAreaMaxHeight }
@@ -144,28 +143,28 @@ struct PanelView: View {
     .padding(.bottom, Theme.Spacing.s)
   }
 
-  @ViewBuilder private var tabContent: some View {
-    let tabSections = sections(store.sections, in: selectedTab)
-    if tabSections.isEmpty {
-      switch selectedTab {
-      case .needsYou:
+  @ViewBuilder private var queueContent: some View {
+    let listedSections = displayedSections(store.sections, layout: layout, tab: selectedTab)
+    if listedSections.isEmpty {
+      if layout == .split && selectedTab == .waiting {
+        StateMessageView(symbol: .nothingWaiting, title: "Nothing waiting", message: "Nothing waiting on others.")
+      } else {
         StateMessageView(
           symbol: .clearSkies, title: "Clear skies", message: "Nothing needs you right now.",
           footnote: store.todaySummary.map { todaySummaryText(reviews: $0.reviews, merges: $0.merges) })
-      case .waiting:
-        StateMessageView(symbol: .nothingWaiting, title: "Nothing waiting", message: "Nothing waiting on others.")
       }
     } else {
-      ForEach(tabSections) { section in
+      ForEach(listedSections) { section in
         sectionView(section)
       }
     }
   }
 
-  // Watch rows sit below the scroll view on both tabs, so running pipelines stay in sight.
+  // In Split, Watch rows sit below the scroll view on both tabs, so running pipelines stay in sight.
+  // In Consolidated, Watch is in the list, so only the legend stays here.
   private var pinnedContent: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-      if let watchSection = store.sections.first(where: { $0.kind == .watch }) {
+      if layout == .split, let watchSection = store.sections.first(where: { $0.kind == .watch }) {
         sectionView(watchSection, visibleItemLimit: pinnedWatchRowLimit)
       }
       if !selectableItems.isEmpty {
@@ -187,7 +186,9 @@ struct PanelView: View {
     panelContent(sources: store.panelSources, hasItems: !store.sections.isEmpty)
   }
 
-  private var showsTabs: Bool { panelState == .queue || panelState == .empty }
+  private var showsQueue: Bool { panelState == .queue || panelState == .empty }
+
+  private var showsTabs: Bool { showsQueue && layout == .split }
 
   @ViewBuilder private var content: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.s) {
@@ -213,7 +214,7 @@ struct PanelView: View {
       }
       switch panelState {
       case .queue, .empty:
-        tabContent
+        queueContent
       case .offline:
         StateMessageView(
           symbol: .offline,
@@ -244,8 +245,14 @@ struct PanelView: View {
   }
 
   private var selectableItems: [QueueItem] {
-    guard showsTabs else { return [] }
-    return selectableRows(in: store.sections, tab: selectedTab, expandedItemIds: expandedItemIds)
+    guard showsQueue else { return [] }
+    return selectableRows(in: store.sections, layout: layout, tab: selectedTab, expandedItemIds: expandedItemIds)
+  }
+
+  private func clearSelection() {
+    selectedItemId = nil
+    popoverItemId = nil
+    isListFocused = true
   }
 
   private func moveSelection(by offset: Int) -> KeyPress.Result {
@@ -258,7 +265,8 @@ struct PanelView: View {
 
   private func handleDisclosure(_ direction: DisclosureDirection) -> KeyPress.Result {
     let outcome = disclosureOutcome(
-      for: direction, selectedItemId: selectedItemId, in: sections(store.sections, in: selectedTab),
+      for: direction, selectedItemId: selectedItemId,
+      in: displayedSections(store.sections, layout: layout, tab: selectedTab),
       expandedItemIds: expandedItemIds)
     switch outcome {
     case .expand(let groupId): expandedItemIds.insert(groupId)

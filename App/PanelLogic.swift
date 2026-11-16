@@ -86,9 +86,13 @@ func visibleRows(in sections: [QueueSection], expandedItemIds: Set<String>) -> [
   }
 }
 
-// Up and Down go through the tab rows, then the pinned Watch rows.
-func selectableRows(in sections: [QueueSection], tab: PanelTab, expandedItemIds: Set<String>) -> [QueueItem] {
-  visibleRows(in: Core.sections(sections, in: tab), expandedItemIds: expandedItemIds) + pinnedWatchRows(in: sections)
+// Up and Down go through the listed rows. In Split, the pinned Watch rows follow them.
+func selectableRows(
+  in sections: [QueueSection], layout: PanelLayout, tab: PanelTab, expandedItemIds: Set<String>
+) -> [QueueItem] {
+  let listedRows = visibleRows(
+    in: displayedSections(sections, layout: layout, tab: tab), expandedItemIds: expandedItemIds)
+  return layout == .split ? listedRows + pinnedWatchRows(in: sections) : listedRows
 }
 
 enum DisclosureDirection: Sendable {

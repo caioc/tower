@@ -40,6 +40,10 @@ enum GitHubSettingsKeys {
   }
 }
 
+enum PanelSettingsKeys {
+  static let layout = "panelLayout"
+}
+
 enum DismissedPipelinesKeys {
   static let dismissedPipelines = "dismissedPipelines"
 

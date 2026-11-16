@@ -373,6 +373,27 @@ public func sections(_ sections: [QueueSection], in tab: PanelTab) -> [QueueSect
   sections.filter { tab.sectionKinds.contains($0.kind) }
 }
 
+// The raw value is the stored setting.
+public enum PanelLayout: String, CaseIterable, Sendable {
+  case split, consolidated
+
+  public var title: String {
+    switch self {
+    case .split: "Split"
+    case .consolidated: "Consolidated"
+    }
+  }
+}
+
+// The sections the scroll list shows. The queue builder already leaves out empty sections and keeps
+// urgency order, so Consolidated shows the queue as it is and ignores the tab.
+public func displayedSections(_ sections: [QueueSection], layout: PanelLayout, tab: PanelTab) -> [QueueSection] {
+  switch layout {
+  case .split: Core.sections(sections, in: tab)
+  case .consolidated: sections
+  }
+}
+
 // The row status dot. The legend under the list names each case.
 public enum StatusDot: CaseIterable, Sendable {
   case failing, urgent, ready, pending
