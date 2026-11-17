@@ -15,12 +15,13 @@ enum PanelSymbol: String, CaseIterable {
   case tokenMissing = "ph-key"
 }
 
-// Phosphor Bold symbols for the Settings window, from the same asset catalog.
+// Symbols for the Settings window, from the same asset catalog.
 enum SettingsSymbol: String, CaseIterable {
-  case general = "ph-gear-six"
-  case github = "ph-git-pull-request"
-  case jira = "ph-ticket"
-  case circleci = "ph-git-fork"
+  case general = "ph-gear"
+  // Drawn for the Settings design canvas in the Phosphor style, not part of the Phosphor set.
+  case github = "settings-github"
+  case jira = "settings-jira"
+  case circleci = "settings-circleci"
   case about = "ph-info"
   case connected = "ph-check-circle-fill"
   case notSetUp = "ph-minus-circle"
