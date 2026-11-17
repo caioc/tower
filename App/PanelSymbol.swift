@@ -14,3 +14,19 @@ enum PanelSymbol: String, CaseIterable {
   case updateFailed = "ph-warning"
   case tokenMissing = "ph-key"
 }
+
+// Symbols for the Settings window, from the same asset catalog.
+enum SettingsSymbol: String, CaseIterable {
+  case general = "ph-gear"
+  // Drawn for the Settings design canvas in the Phosphor style, not part of the Phosphor set.
+  case github = "settings-github"
+  case jira = "settings-jira"
+  case circleci = "settings-circleci"
+  case about = "ph-info"
+  case connected = "ph-check-circle-fill"
+  case notSetUp = "ph-minus-circle"
+  case failed = "ph-warning"
+  case star = "ph-star"
+  case coffee = "ph-coffee"
+  case openArrow = "ph-arrow-up-right"
+}

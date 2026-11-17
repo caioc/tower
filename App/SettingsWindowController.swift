@@ -26,6 +26,7 @@ import AppKit
     let settingsWindow = NSWindow(
       contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: true)
     settingsWindow.title = "Tower Settings"
+    settingsWindow.toolbarStyle = .preference
     settingsWindow.isReleasedWhenClosed = false
     settingsWindow.delegate = self
     return settingsWindow

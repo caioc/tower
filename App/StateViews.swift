@@ -65,6 +65,7 @@ struct SettingsCaption: View {
       Text(text)
         .font(.caption)
         .foregroundStyle(Theme.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 }

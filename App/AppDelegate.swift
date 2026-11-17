@@ -3,10 +3,10 @@ import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
   let store = QueueStore()
-  private lazy var settingsWindowController = injectedSettingsWindowController ?? SettingsWindowController { [store] in
-    let hostingController = NSHostingController(rootView: SettingsView(store: store))
-    hostingController.sizingOptions = .preferredContentSize
-    return hostingController
+  // Settings opens on the last tab for the app run, so the window builds each time from this value.
+  private var settingsTab = SettingsTab.general
+  private lazy var settingsWindowController = injectedSettingsWindowController ?? SettingsWindowController { [weak self, store] in
+    SettingsTabViewController(store: store, initialTab: self?.settingsTab ?? .general) { self?.settingsTab = $0 }
   }
   private var statusItemController: StatusItemController?
   private let injectedSettingsWindowController: SettingsWindowController?

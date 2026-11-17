@@ -36,6 +36,8 @@ enum Theme {
     static let pendingRingWidth: CGFloat = 1.5
     static let disclosureSize: CGFloat = 9
     static let childIndent: CGFloat = 20
+    static let settingsWidth: CGFloat = 520
+    static let settingsLabelWidth: CGFloat = 150
   }
 
   enum Fonts {
@@ -76,6 +78,10 @@ enum Theme {
     nsColor: dynamicColor(
       light: .black.withAlphaComponent(0.10), dark: .white.withAlphaComponent(0.10),
       highContrastLight: .black.withAlphaComponent(0.45), highContrastDark: .white.withAlphaComponent(0.50)))
+
+  // The Buy me a coffee orange from Copilot Runway.
+  static let donationAccent = Color(nsColor: dynamicColor(light: hex(0xC45A00), dark: hex(0xFF9F0A)))
+  static let donationAccentText = Color(nsColor: dynamicColor(light: .white, dark: hex(0x1E1E1E)))
 
   // Selection matches menus: the system selection color, not the accent, so any accent keeps contrast.
   static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
