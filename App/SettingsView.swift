@@ -1,112 +1,29 @@
 import Core
+import Foundation
 import Security
-import SwiftUI
 
-struct SettingsView: View {
-  let store: QueueStore
-  @AppStorage(JiraSettingsKeys.siteURL) private var jiraSiteURL = ""
-  @AppStorage(JiraSettingsKeys.email) private var jiraEmail = ""
-  @State private var jiraToken = KeychainStore.read(account: KeychainStore.jiraTokenAccount) ?? ""
-  @State private var jiraTokenSaveError: String?
-  @State private var jiraTestResult: String?
-  @State private var isTestingJira = false
-  @AppStorage(CircleCISettingsKeys.projectSlugs) private var circleciProjectSlugs = ""
-  @State private var circleciToken = KeychainStore.read(account: KeychainStore.circleciTokenAccount) ?? ""
-  @State private var circleciTokenSaveError: String?
-  @State private var circleciTestResult: String?
-  @State private var isTestingCircleCI = false
+enum SettingsStatusKind: Equatable {
+  case connected
+  case notSetUp
+  case failed
+  case checking
+}
 
-  var body: some View {
-    Form {
-      LaunchAtLoginSection()
-      Section("GitHub") {
-        LabeledContent(
-          "Status", value: settingsGitHubStatusText(status: store.githubStatus, viewerLogin: store.githubSnapshot?.viewerLogin))
-        GitHubOrganizationsField()
-      }
-      Section("Jira") {
-        TextField("Site URL", text: $jiraSiteURL, prompt: Text("https://acme.atlassian.net"))
-        SettingsCaption(text: jiraSiteURLHint(jiraSiteURL))
-        TextField("Email", text: $jiraEmail)
-        SecureField("API token", text: $jiraToken)
-          .onSubmit(saveToken)
-        SettingsCaption(text: jiraTokenSaveError)
-        HStack {
-          Button("Test connection", action: testJira)
-            .disabled(isTestingJira || DemoLaunch.isActive)
-          if let jiraTestResult {
-            Text(jiraTestResult).foregroundStyle(Theme.textSecondary)
-          }
-        }
-      }
-      Section("CircleCI") {
-        SecureField("API token", text: $circleciToken)
-          .onSubmit(saveCircleCIToken)
-        SettingsCaption(text: circleciTokenSaveError)
-        LabeledContent("Projects") {
-          TextEditor(text: $circleciProjectSlugs)
-            .font(.body.monospaced())
-            .frame(minHeight: 60)
-        }
-        Text("One project slug per line, like gh/org/repo.")
-          .font(.caption)
-          .foregroundStyle(Theme.textSecondary)
-        HStack {
-          Button("Test connection", action: testCircleCI)
-            .disabled(isTestingCircleCI || DemoLaunch.isActive)
-          if let circleciTestResult {
-            Text(circleciTestResult).foregroundStyle(Theme.textSecondary)
-          }
-        }
-      }
-    }
-    .formStyle(.grouped)
-    .frame(width: 420)
-    .onDisappear {
-      saveToken()
-      saveCircleCIToken()
-    }
-  }
+struct SettingsStatusRow: Equatable {
+  let kind: SettingsStatusKind
+  let text: String
+}
 
-  private func saveToken() {
-    jiraTokenSaveError = saveTrimmedToken(jiraToken, account: KeychainStore.jiraTokenAccount)
-  }
-
-  private func saveCircleCIToken() {
-    circleciTokenSaveError = saveTrimmedToken(circleciToken, account: KeychainStore.circleciTokenAccount)
-  }
-
-  private func testJira() {
-    saveToken()
-    isTestingJira = true
-    jiraTestResult = nil
-    Task {
-      do throws(SourceFailure) {
-        _ = try await JiraClient(settings: JiraSettingsKeys.load(), transport: URLSessionTransport()).fetch()
-        jiraTestResult = "Connected"
-        await store.refresh()
-      } catch {
-        jiraTestResult = settingsFailureText(error, source: "Jira")
-      }
-      isTestingJira = false
-    }
-  }
-
-  private func testCircleCI() {
-    saveCircleCIToken()
-    isTestingCircleCI = true
-    circleciTestResult = nil
-    let settings = CircleCISettingsKeys.load()
-    let projectCount = settings?.projectSlugs.count ?? 0
-    Task {
-      do throws(SourceFailure) {
-        _ = try await CircleCIClient(settings: settings, transport: URLSessionTransport()).fetch(now: Date())
-        circleciTestResult = circleciConnectedText(projectCount: projectCount)
-      } catch {
-        circleciTestResult = settingsFailureText(error, source: "CircleCI")
-      }
-      isTestingCircleCI = false
-    }
+// A test in progress shows Checking. A finished test result replaces the store status until the store status changes.
+func settingsStatusRow(
+  source: String, status: SourceStatus, testStatus: SourceStatus?, isTesting: Bool, connectedText: String
+) -> SettingsStatusRow {
+  let shownStatus = isTesting ? SourceStatus.idle : (testStatus ?? status)
+  return switch shownStatus {
+  case .idle: SettingsStatusRow(kind: .checking, text: "Checking…")
+  case .ok: SettingsStatusRow(kind: .connected, text: connectedText)
+  case .failed(.notConfigured): SettingsStatusRow(kind: .notSetUp, text: settingsFailureText(.notConfigured, source: source))
+  case .failed(let failure): SettingsStatusRow(kind: .failed, text: settingsFailureText(failure, source: source))
   }
 }
 

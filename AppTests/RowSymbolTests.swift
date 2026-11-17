@@ -14,4 +14,9 @@ struct RowSymbolTests {
   func panelSymbolExistsInTheAssetCatalog(symbol: PanelSymbol) {
     #expect(NSImage(named: symbol.rawValue) != nil)
   }
+
+  @Test(arguments: SettingsSymbol.allCases)
+  func settingsSymbolExistsInTheAssetCatalog(symbol: SettingsSymbol) {
+    #expect(NSImage(named: symbol.rawValue) != nil)
+  }
 }

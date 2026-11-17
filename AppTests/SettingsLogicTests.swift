@@ -92,3 +92,42 @@ struct JiraSiteURLHintTests {
     #expect(jiraSiteURLHint(siteURL) == nil)
   }
 }
+
+struct SettingsStatusRowTests {
+  @Test func storeStatusMapsToKindAndText() {
+    #expect(
+      settingsStatusRow(source: "Jira", status: .idle, testStatus: nil, isTesting: false, connectedText: "Connected")
+        == SettingsStatusRow(kind: .checking, text: "Checking…"))
+    #expect(
+      settingsStatusRow(source: "Jira", status: .ok, testStatus: nil, isTesting: false, connectedText: "Connected")
+        == SettingsStatusRow(kind: .connected, text: "Connected"))
+    #expect(
+      settingsStatusRow(
+        source: "CircleCI", status: .failed(.notConfigured), testStatus: nil, isTesting: false, connectedText: "Connected")
+        == SettingsStatusRow(kind: .notSetUp, text: "Not set up"))
+    #expect(
+      settingsStatusRow(
+        source: "CircleCI", status: .failed(.authentication), testStatus: nil, isTesting: false, connectedText: "Connected")
+        == SettingsStatusRow(kind: .failed, text: "Token rejected. Check the API token."))
+    #expect(
+      settingsStatusRow(source: "GitHub", status: .failed(.network), testStatus: nil, isTesting: false, connectedText: "")
+        == SettingsStatusRow(kind: .failed, text: "Can’t reach GitHub"))
+  }
+
+  @Test func testResultReplacesStoreStatus() {
+    #expect(
+      settingsStatusRow(source: "Jira", status: .ok, testStatus: .failed(.authentication), isTesting: false, connectedText: "Connected")
+        == SettingsStatusRow(kind: .failed, text: "Sign-in failed. Check email and token."))
+    #expect(
+      settingsStatusRow(
+        source: "CircleCI", status: .failed(.notConfigured), testStatus: .ok, isTesting: false,
+        connectedText: "Connected · 2 projects")
+        == SettingsStatusRow(kind: .connected, text: "Connected · 2 projects"))
+  }
+
+  @Test func testInProgressShowsChecking() {
+    #expect(
+      settingsStatusRow(source: "Jira", status: .ok, testStatus: .ok, isTesting: true, connectedText: "Connected")
+        == SettingsStatusRow(kind: .checking, text: "Checking…"))
+  }
+}
