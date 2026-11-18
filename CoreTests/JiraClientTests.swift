@@ -34,6 +34,14 @@ struct JiraClientTests {
     #expect(ticket.issueTypeName == nil)
   }
 
+  @Test(arguments: [#""issuetype":null"#, #""issuetype":{"id":"10001"}"#])
+  func issueTypeWithoutNameDecodesWithNilType(issueTypeJSON: String) async throws {
+    let page = Data(#"{"issues":[{"key":"PROJ-1","fields":{"summary":"S","status":{"name":"In Progress"},"updated":"2027-01-12T09:00:00.000+0000",\#(issueTypeJSON)}}],"isLast":true}"#.utf8)
+    let tickets = try await JiraClient(settings: settings, transport: StubTransport { _ in (page, 200) }).fetch()
+    #expect(tickets.map(\.key) == ["PROJ-1"])
+    #expect(tickets.first?.issueTypeName == nil)
+  }
+
   @Test func sendsJQLWithBasicAuth() async throws {
     let fixtureData = try fixture("jira-search.json")
     let transport = StubTransport { _ in (fixtureData, 200) }

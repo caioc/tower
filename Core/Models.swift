@@ -210,6 +210,19 @@ public enum RowSymbol: String, CaseIterable, Sendable {
     default: self = .ticket
     }
   }
+
+  // VoiceOver reads the issue type, because the row icon is hidden from it. Nil on rows whose icon adds no words.
+  public var issueTypeSpokenName: String? {
+    switch self {
+    case .bug: "Bug"
+    case .story: "Story"
+    case .improvement: "Improvement"
+    case .epic: "Epic"
+    case .task: "Task"
+    case .subtask: "Sub-task"
+    case .failing, .review, .merge, .ticket, .running, .approvalHold, .waiting: nil
+    }
+  }
 }
 
 // The status strip of one authored PR row. A nil part is hidden.

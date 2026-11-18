@@ -156,7 +156,8 @@ func rowSymbolVariant(for item: QueueItem) -> BadgeVariant {
 // VoiceOver reads the dot meaning, because color alone does not carry it.
 func rowAccessibilityLabel(for item: QueueItem) -> String {
   let parts = [
-    item.title, item.reference, item.tag, item.metaTail, item.metaTeam, item.strip?.accessibilityPhrase,
+    item.title, item.reference, item.tag, item.symbol.issueTypeSpokenName, item.metaTail, item.metaTeam,
+    item.strip?.accessibilityPhrase,
     rowStatusText(for: item)?.text,
   ]
   // Skips the phrase when the status text already names the dot, like "Draft · failing".
