@@ -44,17 +44,26 @@ enum PanelSettingsKeys {
   static let layout = "panelLayout"
 }
 
-enum DismissedPipelinesKeys {
+enum DismissalKeys {
   static let dismissedPipelines = "dismissedPipelines"
+  static let dismissedPullRequests = "dismissedPullRequests"
 
-  static func load(defaults: UserDefaults) -> Set<PipelineDismissal> {
-    guard let data = defaults.data(forKey: dismissedPipelines) else { return [] }
-    return (try? JSONDecoder().decode(Set<PipelineDismissal>.self, from: data)) ?? []
+  static func load<Element: Codable & Hashable>(_ key: String, defaults: UserDefaults) -> Set<Element> {
+    guard let data = defaults.data(forKey: key) else { return [] }
+    return (try? JSONDecoder().decode(Set<Element>.self, from: data)) ?? []
   }
 
-  static func save(_ dismissals: Set<PipelineDismissal>, defaults: UserDefaults) {
-    defaults.set(try? JSONEncoder().encode(dismissals), forKey: dismissedPipelines)
+  static func save<Element: Codable & Hashable>(_ dismissals: Set<Element>, key: String, defaults: UserDefaults) {
+    defaults.set(try? JSONEncoder().encode(dismissals), forKey: key)
   }
+}
+
+// The last dismissal, which the undo bar and Cmd-Z can take back. The id tells one dismissal of a row from the next.
+struct UndoableDismissal: Equatable {
+  let id = UUID()
+  let dismissal: Dismissal
+  let title: String
+  let expiresAt: Date
 }
 
 @MainActor @Observable final class QueueStore {
@@ -72,6 +81,10 @@ enum DismissedPipelinesKeys {
   private(set) var jiraTickets: [JiraTicket]?
   private(set) var pipelines: [Pipeline]?
   private(set) var dismissedPipelines: Set<PipelineDismissal>
+  private(set) var dismissedPullRequests: Set<PullRequestDismissal>
+  private(set) var lastDismissal: UndoableDismissal?
+  let undoDuration: Duration
+  private var undoExpiryTask: Task<Void, Never>?
 
   private let tokenProvider: any GitHubTokenProvider
   private let transport: any HTTPTransport
@@ -93,7 +106,8 @@ enum DismissedPipelinesKeys {
     loadJiraSettings: @escaping () -> JiraSettings? = { JiraSettingsKeys.load() },
     loadCircleCISettings: @escaping () -> CircleCISettings? = { CircleCISettingsKeys.load() },
     loadGitHubOrganizations: @escaping () -> [String] = { GitHubSettingsKeys.loadOrganizations() },
-    defaults: UserDefaults = .standard
+    defaults: UserDefaults = .standard,
+    undoDuration: Duration = .seconds(5)
   ) {
     self.tokenProvider = tokenProvider
     self.transport = transport
@@ -102,7 +116,9 @@ enum DismissedPipelinesKeys {
     self.loadCircleCISettings = loadCircleCISettings
     self.loadGitHubOrganizations = loadGitHubOrganizations
     self.defaults = defaults
-    dismissedPipelines = DismissedPipelinesKeys.load(defaults: defaults)
+    self.undoDuration = undoDuration
+    dismissedPipelines = DismissalKeys.load(DismissalKeys.dismissedPipelines, defaults: defaults)
+    dismissedPullRequests = DismissalKeys.load(DismissalKeys.dismissedPullRequests, defaults: defaults)
   }
 
   var todaySummary: (reviews: Int, merges: Int)? {
@@ -191,6 +207,12 @@ enum DismissedPipelinesKeys {
       githubFetchedAt = now
       githubStatus = .ok
       try? cache.save(Cached(value: snapshot, fetchedAt: now), name: "github")
+      // Only a successful fetch prunes, so a failed one does not drop every dismissal.
+      let keptPullRequestDismissals = prunedDismissals(dismissedPullRequests, reviewRequests: snapshot.reviewRequests)
+      if keptPullRequestDismissals != dismissedPullRequests {
+        dismissedPullRequests = keptPullRequestDismissals
+        DismissalKeys.save(keptPullRequestDismissals, key: DismissalKeys.dismissedPullRequests, defaults: defaults)
+      }
     case .failure(let failure):
       githubStatus = .failed(failure)
     }
@@ -218,7 +240,7 @@ enum DismissedPipelinesKeys {
       let keptDismissals = prunedDismissals(dismissedPipelines, pipelines: fetchedPipelines, now: now)
       if keptDismissals != dismissedPipelines {
         dismissedPipelines = keptDismissals
-        DismissedPipelinesKeys.save(keptDismissals, defaults: defaults)
+        DismissalKeys.save(keptDismissals, key: DismissalKeys.dismissedPipelines, defaults: defaults)
       }
     case .failure(let failure):
       circleciStatus = .failed(failure)
@@ -232,14 +254,47 @@ enum DismissedPipelinesKeys {
 
   func dismiss(_ item: QueueItem) {
     guard let dismissal = item.dismissal else { return }
-    dismissedPipelines.insert(dismissal)
+    switch dismissal {
+    case .pipeline(let pipelineDismissal): dismissedPipelines.insert(pipelineDismissal)
+    case .pullRequest(let pullRequestDismissal): dismissedPullRequests.insert(pullRequestDismissal)
+    }
+    let undoableDismissal = UndoableDismissal(
+      dismissal: dismissal, title: item.title, expiresAt: Date().addingTimeInterval(undoDuration.timeInterval))
+    lastDismissal = undoableDismissal
+    // The store owns the deadline, so closing the panel does not keep an old undo alive.
+    undoExpiryTask?.cancel()
+    undoExpiryTask = Task { [weak self, undoDuration] in
+      guard (try? await Task.sleep(for: undoDuration)) != nil else { return }
+      self?.expireUndo(undoableDismissal)
+    }
+    saveDismissals()
+  }
+
+  func undoLastDismissal() {
+    guard let lastDismissal else { return }
+    switch lastDismissal.dismissal {
+    case .pipeline(let pipelineDismissal): dismissedPipelines.remove(pipelineDismissal)
+    case .pullRequest(let pullRequestDismissal): dismissedPullRequests.remove(pullRequestDismissal)
+    }
+    self.lastDismissal = nil
+    undoExpiryTask?.cancel()
+    saveDismissals()
+  }
+
+  // Called when the undo deadline passes. A newer dismissal keeps its own undo.
+  func expireUndo(_ undoableDismissal: UndoableDismissal) {
+    if lastDismissal == undoableDismissal { lastDismissal = nil }
+  }
+
+  private func saveDismissals() {
     #if DEBUG
       if demoScenario != nil {
         rebuild()
         return
       }
     #endif
-    DismissedPipelinesKeys.save(dismissedPipelines, defaults: defaults)
+    DismissalKeys.save(dismissedPipelines, key: DismissalKeys.dismissedPipelines, defaults: defaults)
+    DismissalKeys.save(dismissedPullRequests, key: DismissalKeys.dismissedPullRequests, defaults: defaults)
     rebuild()
   }
 
@@ -266,10 +321,16 @@ enum DismissedPipelinesKeys {
       authoredPullRequests: githubSnapshot?.authoredPullRequests ?? [],
       reviewRequests: githubSnapshot?.reviewRequests ?? [],
       jiraTickets: jiraTickets ?? [],
-      pipelines: pipelines ?? [], dismissedPipelines: dismissedPipelines,
+      pipelines: pipelines ?? [], dismissedPipelines: dismissedPipelines, dismissedPullRequests: dismissedPullRequests,
       mergedPullRequests: githubSnapshot?.recentlyMergedPullRequests ?? [])
     sections = buildQueue(input, now: Date())
     menuBarState = MenuBarState(sections: sections)
+  }
+}
+
+extension Duration {
+  var timeInterval: TimeInterval {
+    Double(components.seconds) + Double(components.attoseconds) / 1e18
   }
 }
 

@@ -56,6 +56,8 @@ struct GitHubClientTests {
     #expect(failing.authorIsBot == false)
     #expect(snapshot.reviewRequests[2].author == "dependabot")
     #expect(snapshot.reviewRequests[2].authorIsBot == true)
+    #expect(snapshot.reviewRequests[2].headCommitId == "9f2c4e1a7b3d5f60e8c1a2b4d6f8e0a1c3e5b7d9")
+    #expect(snapshot.reviewRequests[1].headCommitId == nil)
   }
 
   @Test func sendsBearerTokenToGraphQLEndpoint() async throws {

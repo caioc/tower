@@ -7,11 +7,13 @@ public struct QueueInput: Sendable {
   public var jiraTickets: [JiraTicket]
   public var pipelines: [Pipeline]
   public var dismissedPipelines: Set<PipelineDismissal>
+  public var dismissedPullRequests: Set<PullRequestDismissal>
   public var mergedPullRequests: [MergedPullRequest]
 
   public init(
     viewerLogin: String, authoredPullRequests: [PullRequest], reviewRequests: [PullRequest], jiraTickets: [JiraTicket],
-    pipelines: [Pipeline], dismissedPipelines: Set<PipelineDismissal> = [], mergedPullRequests: [MergedPullRequest] = []
+    pipelines: [Pipeline], dismissedPipelines: Set<PipelineDismissal> = [],
+    dismissedPullRequests: Set<PullRequestDismissal> = [], mergedPullRequests: [MergedPullRequest] = []
   ) {
     self.viewerLogin = viewerLogin
     self.authoredPullRequests = authoredPullRequests
@@ -19,6 +21,7 @@ public struct QueueInput: Sendable {
     self.jiraTickets = jiraTickets
     self.pipelines = pipelines
     self.dismissedPipelines = dismissedPipelines
+    self.dismissedPullRequests = dismissedPullRequests
     self.mergedPullRequests = mergedPullRequests
   }
 }
@@ -48,7 +51,8 @@ public func buildQueue(_ input: QueueInput, now: Date) -> [QueueSection] {
 
   // The search also matches team requests, which stay after the viewer approves. A direct request always shows.
   let openReviewRequests = input.reviewRequests.filter {
-    $0.requestedReviewerLogins.contains(input.viewerLogin) || $0.viewerLatestReviewState != .approved
+    ($0.requestedReviewerLogins.contains(input.viewerLogin) || $0.viewerLatestReviewState != .approved)
+      && !input.dismissedPullRequests.contains($0.dismissal)
   }
   for pullRequest in openReviewRequests where !pullRequest.authorIsBot {
     itemsByKind[.review, default: []].append(reviewItem(pullRequest, viewerLogin: input.viewerLogin, now: now))
@@ -82,7 +86,7 @@ public func buildQueue(_ input: QueueInput, now: Date) -> [QueueSection] {
       itemsByKind[.fix, default: []].append(
         pipelineItem(
           pipeline, symbol: .failing, badge: Badge(text: "Pipeline failed", variant: .failing), now: now,
-          dismissal: pipeline.dismissal))
+          dismissal: .pipeline(pipeline.dismissal)))
     case .running:
       itemsByKind[.watch, default: []].append(
         pipelineItem(pipeline, symbol: .running, badge: Badge(text: "Running", variant: .neutral), now: now))
@@ -158,7 +162,7 @@ private func reviewItem(_ pullRequest: PullRequest, viewerLogin: String, now: Da
     id: pullRequest.itemId, title: pullRequest.title, tag: pullRequest.repository,
     meta: "\(pullRequest.author) · \(shortAge(from: requestedAt, now: now))", metaTeam: teamSlug.map { "team \($0)" },
     url: pullRequest.url, symbol: .review, badge: badge, sortDate: requestedAt, reference: "#\(pullRequest.number)",
-    details: pullRequest.details)
+    details: pullRequest.details, dismissal: .pullRequest(pullRequest.dismissal))
 }
 
 private func gitHubPullsSearchURL(_ searchQuery: String) -> URL {
@@ -264,7 +268,7 @@ func newestPipelinePerKey(_ pipelines: [Pipeline]) -> [Pipeline] {
 }
 
 private func pipelineItem(
-  _ pipeline: Pipeline, symbol: RowSymbol, badge: Badge, now: Date, dismissal: PipelineDismissal? = nil
+  _ pipeline: Pipeline, symbol: RowSymbol, badge: Badge, now: Date, dismissal: Dismissal? = nil
 ) -> QueueItem {
   let repository = pipeline.projectSlug.split(separator: "/").last.map(String.init) ?? pipeline.projectSlug
   return QueueItem(

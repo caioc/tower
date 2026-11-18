@@ -63,6 +63,15 @@ struct PullRequestPopoverView: View {
       guard press.modifiers.contains(.command) else { return .ignored }
       return handleInput(.copy)
     }
+    // The popover holds keyboard focus, so it passes the dismiss and undo shortcuts on to the panel.
+    .onKeyPress(keys: [.delete]) { press in
+      guard press.modifiers.contains(.command) else { return .ignored }
+      return handleInput(.dismiss)
+    }
+    .onKeyPress(keys: ["z"]) { press in
+      guard press.modifiers.subtracting(.capsLock) == .command else { return .ignored }
+      return handleInput(.undo)
+    }
     // Each copy cancels the previous task, so the 1.5 s feedback restarts.
     .task(id: copyEventCount) {
       guard isShowingCopied else { return }

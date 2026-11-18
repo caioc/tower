@@ -12,6 +12,7 @@ struct QueueRowView: View {
   @State private var isHovered = false
 
   // PR rows and failed pipeline rows get a context menu; other rows keep their single action.
+  // Review request rows and failed pipeline rows also get Dismiss.
   var body: some View {
     if isGroup {
       row
@@ -24,9 +25,19 @@ struct QueueRowView: View {
           Button("Show Details", action: showDetails).keyboardShortcut(.space, modifiers: [])
           Button("Open in Browser", action: open)
           Button("Copy Link", action: copyLink).keyboardShortcut("c")
+          // Review requests are dismissible; the owner's own PRs are not.
+          if item.dismissal != nil {
+            Divider()
+            Button("Dismiss", action: dismiss).keyboardShortcut(.delete)
+          }
         }
         .accessibilityAction(named: "Show details", showDetails)
         .accessibilityAction(named: "Copy link", copyLink)
+        .accessibilityActions {
+          if item.dismissal != nil {
+            Button("Dismiss", action: dismiss)
+          }
+        }
     } else if item.dismissal != nil {
       row
         .contextMenu {

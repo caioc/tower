@@ -69,3 +69,55 @@ struct SettingsCaption: View {
     }
   }
 }
+
+// Floats over the bottom of the list after a dismiss. The line under it runs out at the store's undo deadline.
+struct UndoBarView: View {
+  let title: String
+  let expiresAt: Date
+  let duration: Duration
+  let undo: () -> Void
+  @State private var remainingFraction: CGFloat
+
+  // A panel that opens again mid-countdown starts the line at the time left, not full.
+  init(title: String, expiresAt: Date, duration: Duration, undo: @escaping () -> Void) {
+    self.title = title
+    self.expiresAt = expiresAt
+    self.duration = duration
+    self.undo = undo
+    _remainingFraction = State(initialValue: max(expiresAt.timeIntervalSinceNow, 0) / duration.timeInterval)
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: Theme.Spacing.s) {
+        Text("Dismissed \u{201C}\(title)\u{201D}")
+          .font(Theme.Fonts.rowMeta)
+          .foregroundStyle(Theme.textPrimary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+        Spacer(minLength: Theme.Spacing.s)
+        Text("\u{2318}Z").font(Theme.Fonts.legend).foregroundStyle(Theme.textSecondary).accessibilityHidden(true)
+        Button("Undo", action: undo)
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+      }
+      .padding(.leading, Theme.Spacing.m)
+      .padding(.trailing, Theme.Spacing.s)
+      .padding(.vertical, Theme.Spacing.s)
+      GeometryReader { proxy in
+        Rectangle()
+          .fill(Theme.textSecondary)
+          .frame(width: proxy.size.width * remainingFraction)
+      }
+      .frame(height: 2)
+      .accessibilityHidden(true)
+    }
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.banner))
+    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.banner))
+    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.banner).stroke(Theme.cardStroke))
+    .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+    .onAppear {
+      withAnimation(.linear(duration: max(expiresAt.timeIntervalSinceNow, 0))) { remainingFraction = 0 }
+    }
+  }
+}

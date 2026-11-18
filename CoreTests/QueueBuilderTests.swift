@@ -27,7 +27,8 @@ private func pullRequest(
   hasMoreThreadsThanFetched: Bool = false,
   approvalCount: Int = 0,
   requiredApprovalCount: Int = 1,
-  viewerLatestReviewState: ReviewState? = nil
+  viewerLatestReviewState: ReviewState? = nil,
+  headCommitId: String? = nil
 ) -> PullRequest {
   PullRequest(
     repository: repository, number: number, title: title,
@@ -39,7 +40,8 @@ private func pullRequest(
     reviewCount: reviewCount,
     reviewRequestedAt: reviewRequestedHoursAgo.map { now.addingTimeInterval(-$0 * hour) },
     unresolvedThreadCount: unresolvedThreadCount, hasMoreThreadsThanFetched: hasMoreThreadsThanFetched,
-    approvalCount: approvalCount, requiredApprovalCount: requiredApprovalCount, viewerLatestReviewState: viewerLatestReviewState)
+    approvalCount: approvalCount, requiredApprovalCount: requiredApprovalCount, viewerLatestReviewState: viewerLatestReviewState,
+    headCommitId: headCommitId)
 }
 
 private func ticket(key: String, statusName: String = "In Progress", updatedHoursAgo: Double = 72) -> JiraTicket {
@@ -69,12 +71,14 @@ private func pipeline(
 
 private func queue(
   authored: [PullRequest] = [], reviewRequests: [PullRequest] = [], tickets: [JiraTicket] = [], pipelines: [Pipeline] = [],
-  dismissedPipelines: Set<PipelineDismissal> = [], merged: [MergedPullRequest] = []
+  dismissedPipelines: Set<PipelineDismissal> = [], dismissedPullRequests: Set<PullRequestDismissal> = [],
+  merged: [MergedPullRequest] = []
 ) -> [QueueSection] {
   buildQueue(
     QueueInput(
       viewerLogin: "me", authoredPullRequests: authored, reviewRequests: reviewRequests, jiraTickets: tickets,
-      pipelines: pipelines, dismissedPipelines: dismissedPipelines, mergedPullRequests: merged),
+      pipelines: pipelines, dismissedPipelines: dismissedPipelines, dismissedPullRequests: dismissedPullRequests,
+      mergedPullRequests: merged),
     now: now)
 }
 
@@ -691,7 +695,7 @@ struct PipelineQueueTests {
         id: "pipeline:gh/acme/app-web:v2.14.0:webhook", title: "v2.14.0", tag: "app-web", meta: "#1842 · tag · 6m",
         url: URL(string: "https://app.circleci.com/pipelines/github/acme/app-web/1842")!, symbol: .failing,
         badge: Badge(text: "Pipeline failed", variant: .failing), sortDate: now.addingTimeInterval(-0.1 * hour),
-        dismissal: PipelineDismissal(pipelineId: "pipeline-1842", newestWorkflowId: "workflow-1"))
+        dismissal: .pipeline(PipelineDismissal(pipelineId: "pipeline-1842", newestWorkflowId: "workflow-1")))
     ])
   }
 
@@ -814,7 +818,7 @@ struct PipelineQueueTests {
     let sections = queue(pipelines: [
       failed, pipeline(number: 2, ref: "release", state: .running), pipeline(number: 3, ref: "hotfix", state: .onHold),
     ])
-    #expect(items(sections, .fix).map(\.dismissal) == [failed.dismissal])
+    #expect(items(sections, .fix).map(\.dismissal) == [.pipeline(failed.dismissal)])
     #expect(items(sections, .watch).map(\.dismissal) == [nil, nil])
   }
 
@@ -853,5 +857,96 @@ struct PrunedDismissalsTests {
     let dismissed = pipeline(newestWorkflowId: "workflow-1")
     let rerun = pipeline(newestWorkflowId: "workflow-2")
     #expect(prunedDismissals([dismissed.dismissal], pipelines: [rerun], now: now) == [dismissed.dismissal])
+  }
+}
+
+struct ReviewDismissalTests {
+  private let direct = pullRequest(
+    number: 11, author: "ana", requestedReviewerLogins: ["me"], reviewRequestedHoursAgo: 30, headCommitId: "commit-1")
+
+  // A lower number is an older request, so the group order is fixed: 8 (72h) before 9 (71h).
+  private func botPullRequest(_ number: Int, repository: String = "api-config") -> PullRequest {
+    pullRequest(
+      repository: repository, number: number, author: "dependabot", authorIsBot: true, requestedReviewerLogins: ["me"],
+      reviewRequestedHoursAgo: 80 - Double(number), headCommitId: "bot-commit-\(number)")
+  }
+
+  @Test func reviewRowCarriesItsPullRequestDismissal() {
+    let reviewItem = items(queue(reviewRequests: [direct]), .review).first
+    #expect(reviewItem?.dismissal == .pullRequest(direct.dismissal))
+    #expect(
+      direct.dismissal
+        == PullRequestDismissal(
+          repository: "app-web", number: 11, reviewRequestedAt: now.addingTimeInterval(-30 * hour),
+          headCommitId: "commit-1"))
+  }
+
+  @Test func dismissedReviewRequestIsHidden() {
+    #expect(queue(reviewRequests: [direct], dismissedPullRequests: [direct.dismissal]).isEmpty)
+  }
+
+  @Test func newReviewRequestShowsTheDismissedPullRequestAgain() {
+    var requestedAgain = direct
+    requestedAgain.reviewRequestedAt = now.addingTimeInterval(-1 * hour)
+    let sections = queue(reviewRequests: [requestedAgain], dismissedPullRequests: [direct.dismissal])
+    #expect(items(sections, .review).map(\.id) == ["pr:app-web#11"])
+  }
+
+  @Test func newCommitShowsTheDismissedPullRequestAgain() {
+    var pushedAgain = direct
+    pushedAgain.headCommitId = "commit-2"
+    let sections = queue(reviewRequests: [pushedAgain], dismissedPullRequests: [direct.dismissal])
+    #expect(items(sections, .review).map(\.id) == ["pr:app-web#11"])
+  }
+
+  @Test func botGroupRowIsNotDismissibleButItsChildrenAre() throws {
+    let botItem = try #require(items(queue(reviewRequests: [botPullRequest(8), botPullRequest(9)]), .review).first)
+    #expect(botItem.dismissal == nil)
+    #expect(botItem.children.map(\.dismissal) == [.pullRequest(botPullRequest(8).dismissal), .pullRequest(botPullRequest(9).dismissal)])
+  }
+
+  @Test func dismissedBotPullRequestLeavesItsGroup() throws {
+    let sections = queue(
+      reviewRequests: [botPullRequest(7, repository: "api-notifier"), botPullRequest(8), botPullRequest(9)],
+      dismissedPullRequests: [botPullRequest(7, repository: "api-notifier").dismissal])
+    let botItem = try #require(items(sections, .review).first)
+    #expect(botItem.title == "2 Dependabot PRs")
+    #expect(botItem.metaTail == "1 repo · 3d")
+    #expect(botItem.children.map(\.id) == ["pr:api-config#8", "pr:api-config#9"])
+  }
+
+  @Test func dismissingEveryBotPullRequestRemovesTheGroup() {
+    let sections = queue(
+      reviewRequests: [botPullRequest(8), botPullRequest(9)],
+      dismissedPullRequests: [botPullRequest(8).dismissal, botPullRequest(9).dismissal])
+    #expect(sections.isEmpty)
+  }
+
+  @Test func dismissedReviewRequestLeavesTheMenuBarCount() {
+    let other = pullRequest(number: 12, requestedReviewerLogins: ["me"], reviewRequestedHoursAgo: 30)
+    #expect(MenuBarState(sections: queue(reviewRequests: [direct, other], dismissedPullRequests: [direct.dismissal])) == .urgent(count: 1))
+  }
+}
+
+struct PrunedPullRequestDismissalsTests {
+  private let requested = pullRequest(number: 11, requestedReviewerLogins: ["me"], reviewRequestedHoursAgo: 2, headCommitId: "commit-1")
+
+  @Test func keepsDismissalOfPullRequestStillRequested() {
+    #expect(prunedDismissals([requested.dismissal], reviewRequests: [requested]) == [requested.dismissal])
+  }
+
+  @Test func keepsDismissalWhoseCommitChangedWhilePullRequestIsStillRequested() {
+    var pushedAgain = requested
+    pushedAgain.headCommitId = "commit-2"
+    #expect(prunedDismissals([requested.dismissal], reviewRequests: [pushedAgain]) == [requested.dismissal])
+  }
+
+  @Test func dropsDismissalOfPullRequestNoLongerRequested() {
+    #expect(prunedDismissals([requested.dismissal], reviewRequests: [pullRequest(number: 12)]).isEmpty)
+  }
+
+  @Test func matchesOnRepositoryAndNumber() {
+    let otherRepository = pullRequest(repository: "api-config", number: 11)
+    #expect(prunedDismissals([requested.dismissal], reviewRequests: [otherRepository]).isEmpty)
   }
 }

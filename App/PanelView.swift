@@ -33,6 +33,7 @@ struct PanelView: View {
             .background(OverlayScroller())
         }
         .frame(height: min(max(contentHeight, 1), max(scrollAreaMaxHeight - pinnedEdgeHeight, 1)))
+        .overlay(alignment: .bottom) { undoBar }
         .onChange(of: selectedItemId) { _, newValue in
           if let newValue { proxy.scrollTo(newValue) }
         }
@@ -90,6 +91,22 @@ struct PanelView: View {
     .onKeyPress(keys: [.delete]) { press in
       guard press.modifiers.contains(.command) else { return .ignored }
       return handle(.dismiss)
+    }
+    .onKeyPress(keys: ["z"]) { press in
+      // Only Cmd (Caps Lock aside), so Shift-Cmd-Z (redo) does not undo.
+      guard press.modifiers.subtracting(.capsLock) == .command else { return .ignored }
+      return handle(.undo)
+    }
+  }
+
+  // The id gives each dismissal a new bar, so its countdown starts again.
+  @ViewBuilder private var undoBar: some View {
+    if let lastDismissal = store.lastDismissal {
+      UndoBarView(
+        title: lastDismissal.title, expiresAt: lastDismissal.expiresAt, duration: store.undoDuration,
+        undo: store.undoLastDismissal)
+      .id(lastDismissal.id)
+      .padding(Theme.Spacing.s)
     }
   }
 
@@ -282,11 +299,12 @@ struct PanelView: View {
     let selectedItem = selectableItems.first(where: { $0.id == selectedItemId })
     let action = panelAction(
       for: input, selectedItemHasDetails: selectedItem?.details != nil, isPopoverOpen: popoverItemId != nil,
-      selectedItemIsDismissible: selectedItem?.dismissal != nil)
+      selectedItemIsDismissible: selectedItem?.dismissal != nil, canUndo: store.lastDismissal != nil)
     let outcome = panelKeyOutcome(for: action, selectedItemId: selectedItemId, popoverItemId: popoverItemId)
     popoverItemId = outcome.popoverItemId
     if outcome.copiesSelectedLink, let selectedItem { writeLink(selectedItem.url, to: .general) }
     if outcome.dismissesSelectedItem, let selectedItem { store.dismiss(selectedItem) }
+    if outcome.undoesLastDismissal { store.undoLastDismissal() }
     if let offset = outcome.selectionOffset { return moveSelection(by: offset) }
     return outcome.isHandled ? .handled : .ignored
   }

@@ -260,6 +260,15 @@ struct PanelInputTests {
     #expect(action == expectedAction)
   }
 
+  @Test func dismissActsOnAReviewRequestRowWithDetails() {
+    #expect(
+      panelAction(for: .dismiss, selectedItemHasDetails: true, isPopoverOpen: true, selectedItemIsDismissible: true)
+        == .dismiss)
+    #expect(
+      panelAction(for: .rightClick, selectedItemHasDetails: true, isPopoverOpen: false, selectedItemIsDismissible: true)
+        == .showContextMenu)
+  }
+
   @Test func dismissIgnoresAPullRequestRow() {
     #expect(panelAction(for: .dismiss, selectedItemHasDetails: true, isPopoverOpen: false) == .ignore)
   }
@@ -285,6 +294,22 @@ struct PanelKeyOutcomeTests {
   @Test func copyLinkKeepsThePopover() {
     let outcome = panelKeyOutcome(for: .copyLink, selectedItemId: "a", popoverItemId: "a")
     #expect(outcome == PanelKeyOutcome(popoverItemId: "a", copiesSelectedLink: true))
+  }
+
+  @Test func undoActsOnlyWhenADismissalCanBeUndone() {
+    #expect(panelAction(for: .undo, selectedItemHasDetails: false, isPopoverOpen: false, canUndo: true) == .undo)
+    #expect(panelAction(for: .undo, selectedItemHasDetails: true, isPopoverOpen: true, canUndo: true) == .undo)
+    #expect(panelAction(for: .undo, selectedItemHasDetails: false, isPopoverOpen: false, canUndo: false) == .ignore)
+  }
+
+  @Test func undoKeepsThePopover() {
+    let outcome = panelKeyOutcome(for: .undo, selectedItemId: "a", popoverItemId: "a")
+    #expect(outcome == PanelKeyOutcome(popoverItemId: "a", undoesLastDismissal: true))
+  }
+
+  @Test func dismissClosesThePopover() {
+    let outcome = panelKeyOutcome(for: .dismiss, selectedItemId: "a", popoverItemId: "a")
+    #expect(outcome == PanelKeyOutcome(popoverItemId: nil, dismissesSelectedItem: true))
   }
 
   @Test func dismissDismissesTheSelectedRow() {
