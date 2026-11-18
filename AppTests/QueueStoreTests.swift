@@ -337,13 +337,14 @@ private func cacheDirectoryWithFailedPipeline() throws -> URL {
   }
 
   @Test func newerDismissalKeepsItsUndoWhenTheOlderDeadlinePasses() async throws {
-    let store = makeStore(transport: try routingTransport(), undoDuration: .milliseconds(300))
+    // Older deadline at 1 s, check at about 1.2 s, newer deadline at about 1.7 s: wide gaps for slow CI runners.
+    let store = makeStore(transport: try routingTransport(), undoDuration: .seconds(1))
     await store.refresh()
     store.dismiss(try directReviewItem(store))
-    try await Task.sleep(for: .milliseconds(200))
+    try await Task.sleep(for: .milliseconds(700))
     store.dismiss(try #require(reviewItems(store).first { !$0.children.isEmpty }?.children.first))
     let newerUndo = try #require(store.lastDismissal)
-    try await Task.sleep(for: .milliseconds(150))
+    try await Task.sleep(for: .milliseconds(500))
     #expect(store.lastDismissal == newerUndo)
   }
 

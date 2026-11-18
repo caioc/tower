@@ -76,7 +76,16 @@ struct UndoBarView: View {
   let expiresAt: Date
   let duration: Duration
   let undo: () -> Void
-  @State private var remainingFraction: CGFloat = 1
+  @State private var remainingFraction: CGFloat
+
+  // A panel that opens again mid-countdown starts the line at the time left, not full.
+  init(title: String, expiresAt: Date, duration: Duration, undo: @escaping () -> Void) {
+    self.title = title
+    self.expiresAt = expiresAt
+    self.duration = duration
+    self.undo = undo
+    _remainingFraction = State(initialValue: max(expiresAt.timeIntervalSinceNow, 0) / duration.timeInterval)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -107,11 +116,8 @@ struct UndoBarView: View {
     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.banner))
     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.banner).stroke(Theme.cardStroke))
     .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
-    // A panel that opens again mid-countdown starts the line at the time left, not full.
     .onAppear {
-      let remainingSeconds = max(expiresAt.timeIntervalSinceNow, 0)
-      remainingFraction = remainingSeconds / duration.timeInterval
-      withAnimation(.linear(duration: remainingSeconds)) { remainingFraction = 0 }
+      withAnimation(.linear(duration: max(expiresAt.timeIntervalSinceNow, 0))) { remainingFraction = 0 }
     }
   }
 }

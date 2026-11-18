@@ -69,7 +69,7 @@ struct PullRequestPopoverView: View {
       return handleInput(.dismiss)
     }
     .onKeyPress(keys: ["z"]) { press in
-      guard press.modifiers == .command else { return .ignored }
+      guard press.modifiers.subtracting(.capsLock) == .command else { return .ignored }
       return handleInput(.undo)
     }
     // Each copy cancels the previous task, so the 1.5 s feedback restarts.

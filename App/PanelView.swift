@@ -93,8 +93,8 @@ struct PanelView: View {
       return handle(.dismiss)
     }
     .onKeyPress(keys: ["z"]) { press in
-      // Exactly Cmd, so Shift-Cmd-Z (redo) does not undo.
-      guard press.modifiers == .command else { return .ignored }
+      // Only Cmd (Caps Lock aside), so Shift-Cmd-Z (redo) does not undo.
+      guard press.modifiers.subtracting(.capsLock) == .command else { return .ignored }
       return handle(.undo)
     }
   }
