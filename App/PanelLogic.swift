@@ -124,18 +124,19 @@ func disclosureOutcome(
 }
 
 enum PanelInput: Sendable {
-  case click, commandClick, returnKey, space, escape, upArrow, downArrow, copy, rightClick, dismiss
+  case click, commandClick, returnKey, space, escape, upArrow, downArrow, copy, rightClick, dismiss, undo
 }
 
 enum PanelAction: Equatable, Sendable {
   case openAndClosePanel, openInBackground, showPopover, closePopover, closePopoverAndMoveSelection(offset: Int)
-  case copyLink, showContextMenu, closePanel, ignore, dismiss
+  case copyLink, showContextMenu, closePanel, ignore, dismiss, undo
 }
 
 // Click, Cmd-click and Return work on every row. Space and Cmd-C act only on rows with PR details.
 // Cmd-Delete acts only on dismissible rows (failed pipelines, single review requests). Right-click acts on both kinds.
 func panelAction(
-  for input: PanelInput, selectedItemHasDetails: Bool, isPopoverOpen: Bool, selectedItemIsDismissible: Bool = false
+  for input: PanelInput, selectedItemHasDetails: Bool, isPopoverOpen: Bool, selectedItemIsDismissible: Bool = false,
+  canUndo: Bool = false
 ) -> PanelAction {
   switch input {
   case .click, .returnKey: return .openAndClosePanel
@@ -149,6 +150,7 @@ func panelAction(
   case .copy: return selectedItemHasDetails ? .copyLink : .ignore
   case .rightClick: return selectedItemHasDetails || selectedItemIsDismissible ? .showContextMenu : .ignore
   case .dismiss: return selectedItemIsDismissible ? .dismiss : .ignore
+  case .undo: return canUndo ? .undo : .ignore
   }
 }
 
@@ -157,6 +159,7 @@ struct PanelKeyOutcome: Equatable {
   var selectionOffset: Int?
   var copiesSelectedLink = false
   var dismissesSelectedItem = false
+  var undoesLastDismissal = false
   var isHandled = true
 }
 
@@ -174,6 +177,8 @@ func panelKeyOutcome(for action: PanelAction, selectedItemId: String?, popoverIt
   // The dismissed row leaves the list, so its popover closes with it.
   case .dismiss:
     return PanelKeyOutcome(popoverItemId: nil, dismissesSelectedItem: true)
+  case .undo:
+    return PanelKeyOutcome(popoverItemId: popoverItemId, undoesLastDismissal: true)
   case .closePanel, .ignore, .openAndClosePanel, .openInBackground, .showContextMenu:
     return PanelKeyOutcome(popoverItemId: popoverItemId, isHandled: false)
   }

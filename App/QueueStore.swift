@@ -63,6 +63,7 @@ struct UndoableDismissal: Equatable {
   let id = UUID()
   let dismissal: Dismissal
   let title: String
+  let expiresAt: Date
 }
 
 @MainActor @Observable final class QueueStore {
@@ -82,6 +83,8 @@ struct UndoableDismissal: Equatable {
   private(set) var dismissedPipelines: Set<PipelineDismissal>
   private(set) var dismissedPullRequests: Set<PullRequestDismissal>
   private(set) var lastDismissal: UndoableDismissal?
+  let undoDuration: Duration
+  private var undoExpiryTask: Task<Void, Never>?
 
   private let tokenProvider: any GitHubTokenProvider
   private let transport: any HTTPTransport
@@ -103,7 +106,8 @@ struct UndoableDismissal: Equatable {
     loadJiraSettings: @escaping () -> JiraSettings? = { JiraSettingsKeys.load() },
     loadCircleCISettings: @escaping () -> CircleCISettings? = { CircleCISettingsKeys.load() },
     loadGitHubOrganizations: @escaping () -> [String] = { GitHubSettingsKeys.loadOrganizations() },
-    defaults: UserDefaults = .standard
+    defaults: UserDefaults = .standard,
+    undoDuration: Duration = .seconds(5)
   ) {
     self.tokenProvider = tokenProvider
     self.transport = transport
@@ -112,6 +116,7 @@ struct UndoableDismissal: Equatable {
     self.loadCircleCISettings = loadCircleCISettings
     self.loadGitHubOrganizations = loadGitHubOrganizations
     self.defaults = defaults
+    self.undoDuration = undoDuration
     dismissedPipelines = DismissalKeys.load(DismissalKeys.dismissedPipelines, defaults: defaults)
     dismissedPullRequests = DismissalKeys.load(DismissalKeys.dismissedPullRequests, defaults: defaults)
   }
@@ -253,7 +258,15 @@ struct UndoableDismissal: Equatable {
     case .pipeline(let pipelineDismissal): dismissedPipelines.insert(pipelineDismissal)
     case .pullRequest(let pullRequestDismissal): dismissedPullRequests.insert(pullRequestDismissal)
     }
-    lastDismissal = UndoableDismissal(dismissal: dismissal, title: item.title)
+    let undoableDismissal = UndoableDismissal(
+      dismissal: dismissal, title: item.title, expiresAt: Date().addingTimeInterval(undoDuration.timeInterval))
+    lastDismissal = undoableDismissal
+    // The store owns the deadline, so closing the panel does not keep an old undo alive.
+    undoExpiryTask?.cancel()
+    undoExpiryTask = Task { [weak self, undoDuration] in
+      guard (try? await Task.sleep(for: undoDuration)) != nil else { return }
+      self?.expireUndo(undoableDismissal)
+    }
     saveDismissals()
   }
 
@@ -264,10 +277,11 @@ struct UndoableDismissal: Equatable {
     case .pullRequest(let pullRequestDismissal): dismissedPullRequests.remove(pullRequestDismissal)
     }
     self.lastDismissal = nil
+    undoExpiryTask?.cancel()
     saveDismissals()
   }
 
-  // Called when the undo bar times out. A newer dismissal keeps its own undo.
+  // Called when the undo deadline passes. A newer dismissal keeps its own undo.
   func expireUndo(_ undoableDismissal: UndoableDismissal) {
     if lastDismissal == undoableDismissal { lastDismissal = nil }
   }
@@ -311,6 +325,12 @@ struct UndoableDismissal: Equatable {
       mergedPullRequests: githubSnapshot?.recentlyMergedPullRequests ?? [])
     sections = buildQueue(input, now: Date())
     menuBarState = MenuBarState(sections: sections)
+  }
+}
+
+extension Duration {
+  var timeInterval: TimeInterval {
+    Double(components.seconds) + Double(components.attoseconds) / 1e18
   }
 }
 

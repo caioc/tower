@@ -70,12 +70,12 @@ struct SettingsCaption: View {
   }
 }
 
-// Floats over the bottom of the list after a dismiss. The line under it runs out, then the bar calls expire.
+// Floats over the bottom of the list after a dismiss. The line under it runs out at the store's undo deadline.
 struct UndoBarView: View {
   let title: String
+  let expiresAt: Date
   let duration: Duration
   let undo: () -> Void
-  let expire: () -> Void
   @State private var remainingFraction: CGFloat = 1
 
   var body: some View {
@@ -107,10 +107,11 @@ struct UndoBarView: View {
     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.banner))
     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.banner).stroke(Theme.cardStroke))
     .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
-    .task {
-      withAnimation(.linear(duration: Double(duration.components.seconds))) { remainingFraction = 0 }
-      try? await Task.sleep(for: duration)
-      if !Task.isCancelled { expire() }
+    // A panel that opens again mid-countdown starts the line at the time left, not full.
+    .onAppear {
+      let remainingSeconds = max(expiresAt.timeIntervalSinceNow, 0)
+      remainingFraction = remainingSeconds / duration.timeInterval
+      withAnimation(.linear(duration: remainingSeconds)) { remainingFraction = 0 }
     }
   }
 }

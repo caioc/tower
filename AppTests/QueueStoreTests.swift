@@ -48,12 +48,13 @@ private func routingTransport(github: Int = 200, jira: Int = 200, circleci: Int 
   jira: JiraSettings? = jiraSettings,
   circleci: CircleCISettings? = circleciSettings,
   githubOrganizations: [String] = [],
-  defaults: UserDefaults = temporaryDefaults()
+  defaults: UserDefaults = temporaryDefaults(),
+  undoDuration: Duration = .seconds(5)
 ) -> QueueStore {
   QueueStore(
     tokenProvider: StubTokenProvider(result: token), transport: transport, cacheDirectory: cacheDirectory,
     loadJiraSettings: { jira }, loadCircleCISettings: { circleci },
-    loadGitHubOrganizations: { githubOrganizations }, defaults: defaults)
+    loadGitHubOrganizations: { githubOrganizations }, defaults: defaults, undoDuration: undoDuration)
 }
 
 @MainActor struct QueueStoreRefreshTests {
@@ -242,6 +243,9 @@ private func cacheDirectoryWithFailedPipeline() throws -> URL {
 
     let relaunchedStore = makeStore(transport: try routingTransport(), cacheDirectory: cacheDirectory, defaults: defaults)
     relaunchedStore.loadCache()
+    #expect(relaunchedStore.dismissedPullRequests == store.dismissedPullRequests)
+    // The bot group still shows, so the cache loaded and only the dismissed row is gone.
+    #expect(reviewItems(relaunchedStore).contains { !$0.children.isEmpty })
     #expect(!reviewItems(relaunchedStore).contains { $0.id == reviewItem.id })
     #expect(relaunchedStore.lastDismissal == nil)
   }
@@ -317,6 +321,30 @@ private func cacheDirectoryWithFailedPipeline() throws -> URL {
     #expect(store.lastDismissal == secondUndo)
     store.expireUndo(secondUndo)
     #expect(store.lastDismissal == nil)
+  }
+
+  @Test func undoExpiresAfterTheUndoDurationWithoutAnyView() async throws {
+    let store = makeStore(transport: try routingTransport(), undoDuration: .milliseconds(50))
+    await store.refresh()
+    let reviewItem = try directReviewItem(store)
+    let dismissedAt = Date()
+    store.dismiss(reviewItem)
+    let undoableDismissal = try #require(store.lastDismissal)
+    #expect(abs(undoableDismissal.expiresAt.timeIntervalSince(dismissedAt) - 0.05) < 0.5)
+    try await Task.sleep(for: .milliseconds(500))
+    #expect(store.lastDismissal == nil)
+    #expect(!reviewItems(store).contains { $0.id == reviewItem.id })
+  }
+
+  @Test func newerDismissalKeepsItsUndoWhenTheOlderDeadlinePasses() async throws {
+    let store = makeStore(transport: try routingTransport(), undoDuration: .milliseconds(300))
+    await store.refresh()
+    store.dismiss(try directReviewItem(store))
+    try await Task.sleep(for: .milliseconds(200))
+    store.dismiss(try #require(reviewItems(store).first { !$0.children.isEmpty }?.children.first))
+    let newerUndo = try #require(store.lastDismissal)
+    try await Task.sleep(for: .milliseconds(150))
+    #expect(store.lastDismissal == newerUndo)
   }
 
   @Test func successfulRefreshDropsDismissalsOfPullRequestsNoLongerRequested() async throws {
