@@ -102,13 +102,16 @@ public struct JiraTicket: Codable, Sendable, Equatable {
   public var statusName: String
   public var updatedAt: Date
   public var url: URL
+  // The Jira issue type name, for example "Bug". Nil in caches written before Tower read the type.
+  public var issueTypeName: String?
 
-  public init(key: String, summary: String, statusName: String, updatedAt: Date, url: URL) {
+  public init(key: String, summary: String, statusName: String, updatedAt: Date, url: URL, issueTypeName: String? = nil) {
     self.key = key
     self.summary = summary
     self.statusName = statusName
     self.updatedAt = updatedAt
     self.url = url
+    self.issueTypeName = issueTypeName
   }
 }
 
@@ -184,11 +187,29 @@ public enum RowSymbol: String, CaseIterable, Sendable {
   case failing = "ph-x-circle"
   case review = "ph-eye"
   case merge = "ph-git-merge"
-  case noPullRequest = "ph-git-branch"
-  case noReviewer = "ph-user-circle-dashed"
+  case bug = "ph-bug"
+  case story = "ph-bookmark-simple"
+  case improvement = "ph-arrow-fat-up"
+  case epic = "ph-lightning"
+  case task = "ph-check-square"
+  case subtask = "ph-check-square-offset"
+  case ticket = "ph-ticket"
   case running = "ph-airplane-takeoff"
   case approvalHold = "ph-hand-palm"
   case waiting = "ph-airplane-in-flight"
+
+  // Company-managed Jira projects name the type "Sub-task", team-managed projects "Subtask".
+  public init(jiraIssueTypeName: String?) {
+    switch jiraIssueTypeName?.lowercased() {
+    case "bug": self = .bug
+    case "story": self = .story
+    case "improvement": self = .improvement
+    case "epic": self = .epic
+    case "task": self = .task
+    case "sub-task", "subtask": self = .subtask
+    default: self = .ticket
+    }
+  }
 }
 
 // The status strip of one authored PR row. A nil part is hidden.

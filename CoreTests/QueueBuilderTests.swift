@@ -44,11 +44,13 @@ private func pullRequest(
     headCommitId: headCommitId)
 }
 
-private func ticket(key: String, statusName: String = "In Progress", updatedHoursAgo: Double = 72) -> JiraTicket {
+private func ticket(
+  key: String, statusName: String = "In Progress", updatedHoursAgo: Double = 72, issueTypeName: String? = nil
+) -> JiraTicket {
   JiraTicket(
     key: key, summary: "Ticket \(key)", statusName: statusName,
     updatedAt: now.addingTimeInterval(-updatedHoursAgo * hour),
-    url: URL(string: "https://acme.atlassian.net/browse/\(key)")!)
+    url: URL(string: "https://acme.atlassian.net/browse/\(key)")!, issueTypeName: issueTypeName)
 }
 
 private func pipeline(
@@ -312,21 +314,34 @@ struct QueueBuilderTests {
   }
 
   @Test func ticketWithoutPullRequestShowsNoPR() {
-    let sections = queue(tickets: [ticket(key: "PROJ-1432", updatedHoursAgo: 72)])
+    let sections = queue(tickets: [ticket(key: "PROJ-1432", updatedHoursAgo: 72, issueTypeName: "Bug")])
     let tidyItem = items(sections, .tidy).first
     #expect(tidyItem?.badge == Badge(text: "No PR", variant: .neutral))
     #expect(tidyItem?.tag == "PROJ-1432")
     #expect(tidyItem?.metaTail == "In Progress · 3d")
-    #expect(tidyItem?.symbol == .noPullRequest)
+    #expect(tidyItem?.symbol == .bug)
   }
 
   @Test func ticketWithUnreviewedPullRequestShowsNoReviewer() {
     let sections = queue(
       authored: [pullRequest(headBranch: "proj-1440-export")],
-      tickets: [ticket(key: "PROJ-1440", statusName: "In Review")])
+      tickets: [ticket(key: "PROJ-1440", statusName: "In Review", issueTypeName: "Story")])
     let tidyItem = items(sections, .tidy).first
     #expect(tidyItem?.badge == Badge(text: "No reviewer", variant: .neutral))
-    #expect(tidyItem?.symbol == .noReviewer)
+    #expect(tidyItem?.symbol == .story)
+  }
+
+  @Test(arguments: [
+    ("Bug", RowSymbol.bug), ("Story", .story), ("Improvement", .improvement), ("Epic", .epic), ("Task", .task),
+    ("Sub-task", .subtask), ("Subtask", .subtask), ("bug", .bug), ("Spike", .ticket), ("", .ticket),
+  ])
+  func jiraIssueTypeMapsToRowSymbol(issueTypeName: String, expectedSymbol: RowSymbol) {
+    #expect(RowSymbol(jiraIssueTypeName: issueTypeName) == expectedSymbol)
+  }
+
+  @Test func ticketWithoutIssueTypeShowsTicketSymbol() {
+    let tidyItem = items(queue(tickets: [ticket(key: "PROJ-1432")]), .tidy).first
+    #expect(tidyItem?.symbol == .ticket)
   }
 
   @Test func ticketWithMergedPullRequestIsHidden() {

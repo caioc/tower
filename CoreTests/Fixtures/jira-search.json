@@ -6,6 +6,7 @@
       "fields": {
         "summary": "Offline sync for trap counts",
         "status": { "name": "In Progress" },
+        "issuetype": { "id": "10004", "name": "Bug" },
         "updated": "2027-01-12T09:00:00.000+0000"
       }
     },

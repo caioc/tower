@@ -235,13 +235,10 @@ private func tidyItem(
   }
   // A draft counts as the ticket's PR, but you do not ask for a review on a draft.
   let nonDraftPullRequests = matchedPullRequests.filter { !$0.isDraft }
-  let symbol: RowSymbol
   let badgeText: String
   if matchedPullRequests.isEmpty {
-    symbol = .noPullRequest
     badgeText = "No PR"
   } else if !nonDraftPullRequests.isEmpty && nonDraftPullRequests.allSatisfy(\.hasNoReviewer) {
-    symbol = .noReviewer
     badgeText = "No reviewer"
   } else {
     return nil
@@ -249,7 +246,8 @@ private func tidyItem(
   return QueueItem(
     id: "jira:\(ticket.key)", title: ticket.summary, tag: ticket.key,
     meta: "\(ticket.statusName) · \(shortAge(from: ticket.updatedAt, now: now))",
-    url: ticket.url, symbol: symbol, badge: Badge(text: badgeText, variant: .neutral), sortDate: ticket.updatedAt)
+    url: ticket.url, symbol: RowSymbol(jiraIssueTypeName: ticket.issueTypeName),
+    badge: Badge(text: badgeText, variant: .neutral), sortDate: ticket.updatedAt)
 }
 
 extension PullRequest {
