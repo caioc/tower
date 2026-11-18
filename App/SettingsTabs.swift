@@ -79,6 +79,13 @@ struct SettingsTextEditor: View {
 
 private let tokenSaveCaption = "Saved to the Keychain when you press Return, change tabs or close the window."
 
+// Demo mode shows this fake token and never reads or writes the Keychain, so agents can open Settings without a prompt.
+private let demoToken = "demo-token"
+
+private func initialToken(account: String) -> String {
+  DemoLaunch.isActive ? demoToken : KeychainStore.read(account: account) ?? ""
+}
+
 struct SettingsGeneralTab: View {
   @AppStorage(PanelSettingsKeys.layout) private var panelLayout = PanelLayout.split
 
@@ -130,7 +137,7 @@ struct SettingsJiraTab: View {
   let store: QueueStore
   @AppStorage(JiraSettingsKeys.siteURL) private var jiraSiteURL = ""
   @AppStorage(JiraSettingsKeys.email) private var jiraEmail = ""
-  @State private var jiraToken = KeychainStore.read(account: KeychainStore.jiraTokenAccount) ?? ""
+  @State private var jiraToken = initialToken(account: KeychainStore.jiraTokenAccount)
   @State private var tokenSaveError: String?
   @State private var testStatus: SourceStatus?
   @State private var isTesting = false
@@ -175,6 +182,7 @@ struct SettingsJiraTab: View {
   }
 
   private func saveToken() {
+    guard !DemoLaunch.isActive else { return }
     tokenSaveError = saveTrimmedToken(jiraToken, account: KeychainStore.jiraTokenAccount)
   }
 
@@ -197,7 +205,7 @@ struct SettingsJiraTab: View {
 struct SettingsCircleCITab: View {
   let store: QueueStore
   @AppStorage(CircleCISettingsKeys.projectSlugs) private var circleciProjectSlugs = ""
-  @State private var circleciToken = KeychainStore.read(account: KeychainStore.circleciTokenAccount) ?? ""
+  @State private var circleciToken = initialToken(account: KeychainStore.circleciTokenAccount)
   @State private var tokenSaveError: String?
   @State private var testStatus: SourceStatus?
   @State private var isTesting = false
@@ -241,6 +249,7 @@ struct SettingsCircleCITab: View {
   }
 
   private func saveToken() {
+    guard !DemoLaunch.isActive else { return }
     tokenSaveError = saveTrimmedToken(circleciToken, account: KeychainStore.circleciTokenAccount)
   }
 
