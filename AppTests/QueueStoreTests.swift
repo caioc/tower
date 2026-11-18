@@ -216,6 +216,140 @@ private func cacheDirectoryWithFailedPipeline() throws -> URL {
   }
 }
 
+// After a refresh with the GitHub fixture, Review holds one direct request and one Dependabot group with one PR.
+@MainActor private func reviewItems(_ store: QueueStore) -> [QueueItem] {
+  store.sections.first { $0.kind == .review }?.items ?? []
+}
+
+@MainActor private func directReviewItem(_ store: QueueStore) throws -> QueueItem {
+  try #require(reviewItems(store).first { $0.children.isEmpty })
+}
+
+@MainActor struct QueueStoreReviewDismissTests {
+  @Test func dismissHidesTheReviewRequestAndKeepsItForTheNextLaunch() async throws {
+    let cacheDirectory = temporaryDirectory()
+    let suiteName = "tower-store-\(UUID().uuidString)"
+    let defaults = temporaryDefaults(suiteName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = makeStore(transport: try routingTransport(), cacheDirectory: cacheDirectory, defaults: defaults)
+    await store.refresh()
+    let reviewItem = try directReviewItem(store)
+    store.dismiss(reviewItem)
+    #expect(!reviewItems(store).contains { $0.id == reviewItem.id })
+    #expect(store.dismissedPullRequests.count == 1)
+    #expect(store.lastDismissal?.title == reviewItem.title)
+    #expect(store.lastDismissal?.dismissal == reviewItem.dismissal)
+
+    let relaunchedStore = makeStore(transport: try routingTransport(), cacheDirectory: cacheDirectory, defaults: defaults)
+    relaunchedStore.loadCache()
+    #expect(!reviewItems(relaunchedStore).contains { $0.id == reviewItem.id })
+    #expect(relaunchedStore.lastDismissal == nil)
+  }
+
+  @Test func dismissingTheOnlyBotPullRequestRemovesItsGroup() async throws {
+    let store = makeStore(transport: try routingTransport())
+    await store.refresh()
+    let botGroup = try #require(reviewItems(store).first { !$0.children.isEmpty })
+    store.dismiss(try #require(botGroup.children.first))
+    #expect(!reviewItems(store).contains { $0.id == botGroup.id })
+  }
+
+  @Test func dismissIgnoresARowWithoutADismissal() async throws {
+    let store = makeStore(transport: try routingTransport())
+    await store.refresh()
+    let botGroup = try #require(reviewItems(store).first { !$0.children.isEmpty })
+    store.dismiss(botGroup)
+    #expect(reviewItems(store).contains { $0.id == botGroup.id })
+    #expect(store.lastDismissal == nil)
+  }
+
+  @Test func undoBringsTheRowBackAndKeepsThatForTheNextLaunch() async throws {
+    let cacheDirectory = temporaryDirectory()
+    let suiteName = "tower-store-\(UUID().uuidString)"
+    let defaults = temporaryDefaults(suiteName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = makeStore(transport: try routingTransport(), cacheDirectory: cacheDirectory, defaults: defaults)
+    await store.refresh()
+    let reviewItem = try directReviewItem(store)
+    store.dismiss(reviewItem)
+    store.undoLastDismissal()
+    #expect(reviewItems(store).contains { $0.id == reviewItem.id })
+    #expect(store.dismissedPullRequests.isEmpty)
+    #expect(store.lastDismissal == nil)
+
+    let relaunchedStore = makeStore(transport: try routingTransport(), cacheDirectory: cacheDirectory, defaults: defaults)
+    relaunchedStore.loadCache()
+    #expect(reviewItems(relaunchedStore).contains { $0.id == reviewItem.id })
+  }
+
+  @Test func undoBringsBackADismissedPipeline() throws {
+    let store = makeStore(transport: try routingTransport(), cacheDirectory: try cacheDirectoryWithFailedPipeline())
+    store.loadCache()
+    store.dismiss(try #require(store.sections.first?.items.first))
+    #expect(store.sections.isEmpty)
+    store.undoLastDismissal()
+    #expect(store.sections.first?.items.first?.dismissal == .pipeline(failedPipeline.dismissal))
+    #expect(store.dismissedPipelines.isEmpty)
+  }
+
+  @Test func undoTakesBackOnlyTheLastDismissal() async throws {
+    let store = makeStore(transport: try routingTransport())
+    await store.refresh()
+    let reviewItem = try directReviewItem(store)
+    let botPullRequest = try #require(reviewItems(store).first { !$0.children.isEmpty }?.children.first)
+    store.dismiss(reviewItem)
+    store.dismiss(botPullRequest)
+    store.undoLastDismissal()
+    #expect(!reviewItems(store).contains { $0.id == reviewItem.id })
+    #expect(reviewItems(store).contains { $0.children.contains { $0.id == botPullRequest.id } })
+    store.undoLastDismissal()
+    #expect(!reviewItems(store).contains { $0.id == reviewItem.id })
+  }
+
+  @Test func expireUndoClearsOnlyTheSameDismissal() async throws {
+    let store = makeStore(transport: try routingTransport())
+    await store.refresh()
+    store.dismiss(try directReviewItem(store))
+    let firstUndo = try #require(store.lastDismissal)
+    store.dismiss(try #require(reviewItems(store).first { !$0.children.isEmpty }?.children.first))
+    let secondUndo = try #require(store.lastDismissal)
+    store.expireUndo(firstUndo)
+    #expect(store.lastDismissal == secondUndo)
+    store.expireUndo(secondUndo)
+    #expect(store.lastDismissal == nil)
+  }
+
+  @Test func successfulRefreshDropsDismissalsOfPullRequestsNoLongerRequested() async throws {
+    let suiteName = "tower-store-\(UUID().uuidString)"
+    let defaults = temporaryDefaults(suiteName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = makeStore(transport: try routingTransport(), defaults: defaults)
+    await store.refresh()
+    store.dismiss(try directReviewItem(store))
+    let keptDismissals = store.dismissedPullRequests
+    let gone = PullRequestDismissal(repository: "gone", number: 1, reviewRequestedAt: nil, headCommitId: nil)
+    DismissalKeys.save(keptDismissals.union([gone]), key: DismissalKeys.dismissedPullRequests, defaults: defaults)
+
+    let relaunchedStore = makeStore(transport: try routingTransport(), defaults: defaults)
+    #expect(relaunchedStore.dismissedPullRequests == keptDismissals.union([gone]))
+    await relaunchedStore.refresh()
+    #expect(relaunchedStore.dismissedPullRequests == keptDismissals)
+    #expect(DismissalKeys.load(DismissalKeys.dismissedPullRequests, defaults: defaults) == keptDismissals)
+  }
+
+  @Test func failedGitHubRefreshKeepsPullRequestDismissals() async throws {
+    let suiteName = "tower-store-\(UUID().uuidString)"
+    let defaults = temporaryDefaults(suiteName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let gone = PullRequestDismissal(repository: "gone", number: 1, reviewRequestedAt: nil, headCommitId: nil)
+    DismissalKeys.save([gone], key: DismissalKeys.dismissedPullRequests, defaults: defaults)
+    let store = makeStore(transport: try routingTransport(github: 500), defaults: defaults)
+    await store.refresh()
+    #expect(store.githubStatus == .failed(.unexpected("HTTP 500")))
+    #expect(store.dismissedPullRequests == [gone])
+  }
+}
+
 @MainActor struct QueueStoreCacheTests {
   @Test func loadCacheRestoresEverySourceWithItsFetchTime() async throws {
     let cacheDirectory = temporaryDirectory()

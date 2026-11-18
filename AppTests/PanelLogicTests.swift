@@ -260,6 +260,15 @@ struct PanelInputTests {
     #expect(action == expectedAction)
   }
 
+  @Test func dismissActsOnAReviewRequestRowWithDetails() {
+    #expect(
+      panelAction(for: .dismiss, selectedItemHasDetails: true, isPopoverOpen: true, selectedItemIsDismissible: true)
+        == .dismiss)
+    #expect(
+      panelAction(for: .rightClick, selectedItemHasDetails: true, isPopoverOpen: false, selectedItemIsDismissible: true)
+        == .showContextMenu)
+  }
+
   @Test func dismissIgnoresAPullRequestRow() {
     #expect(panelAction(for: .dismiss, selectedItemHasDetails: true, isPopoverOpen: false) == .ignore)
   }
@@ -285,6 +294,11 @@ struct PanelKeyOutcomeTests {
   @Test func copyLinkKeepsThePopover() {
     let outcome = panelKeyOutcome(for: .copyLink, selectedItemId: "a", popoverItemId: "a")
     #expect(outcome == PanelKeyOutcome(popoverItemId: "a", copiesSelectedLink: true))
+  }
+
+  @Test func dismissClosesThePopover() {
+    let outcome = panelKeyOutcome(for: .dismiss, selectedItemId: "a", popoverItemId: "a")
+    #expect(outcome == PanelKeyOutcome(popoverItemId: nil, dismissesSelectedItem: true))
   }
 
   @Test func dismissDismissesTheSelectedRow() {

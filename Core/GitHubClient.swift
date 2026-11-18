@@ -153,7 +153,7 @@ private let searchQuery = """
     }
   }
   fragment PullRequestFields on PullRequest {
-    number title url isDraft updatedAt headRefName additions deletions reviewDecision
+    number title url isDraft updatedAt headRefName headRefOid additions deletions reviewDecision
     repository { name }
     author { __typename login }
     commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 1) {
@@ -259,6 +259,7 @@ private struct PullRequestNode: Decodable {
   var isDraft: Bool?
   var updatedAt: Date?
   var headRefName: String?
+  var headRefOid: String?
   var additions: Int?
   var deletions: Int?
   var reviewDecision: ReviewDecision?
@@ -295,7 +296,7 @@ private struct PullRequestNode: Decodable {
       hasMoreThreadsThanFetched: (reviewThreads?.totalCount ?? 0) > reviewThreadPageSize,
       approvalCount: latestOpinionatedReviews?.nodes.filter { $0.state == "APPROVED" }.count ?? 0,
       requiredApprovalCount: requiredApprovalCounts.max() ?? 1,
-      viewerLatestReviewState: viewerLatestReview.flatMap { ReviewState(rawValue: $0.state) })
+      viewerLatestReviewState: viewerLatestReview.flatMap { ReviewState(rawValue: $0.state) }, headCommitId: headRefOid)
   }
 }
 

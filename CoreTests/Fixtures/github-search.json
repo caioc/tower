@@ -307,6 +307,7 @@
           "isDraft": false,
           "updatedAt": "2027-01-14T12:00:00Z",
           "headRefName": "dependabot/pip/requests-2.32.0",
+          "headRefOid": "9f2c4e1a7b3d5f60e8c1a2b4d6f8e0a1c3e5b7d9",
           "additions": 40,
           "deletions": 5,
           "reviewDecision": "REVIEW_REQUIRED",

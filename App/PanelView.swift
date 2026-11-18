@@ -2,6 +2,9 @@ import AppKit
 import Core
 import SwiftUI
 
+// How long the undo bar shows after a dismiss.
+private let undoBarDuration: Duration = .seconds(5)
+
 struct PanelView: View {
   let store: QueueStore
   let close: () -> Void
@@ -33,6 +36,7 @@ struct PanelView: View {
             .background(OverlayScroller())
         }
         .frame(height: min(max(contentHeight, 1), max(scrollAreaMaxHeight - pinnedEdgeHeight, 1)))
+        .overlay(alignment: .bottom) { undoBar }
         .onChange(of: selectedItemId) { _, newValue in
           if let newValue { proxy.scrollTo(newValue) }
         }
@@ -90,6 +94,23 @@ struct PanelView: View {
     .onKeyPress(keys: [.delete]) { press in
       guard press.modifiers.contains(.command) else { return .ignored }
       return handle(.dismiss)
+    }
+    .onKeyPress(keys: ["z"]) { press in
+      guard press.modifiers.contains(.command), store.lastDismissal != nil else { return .ignored }
+      store.undoLastDismissal()
+      return .handled
+    }
+  }
+
+  // The id gives each dismissal a new bar, so its countdown starts again.
+  @ViewBuilder private var undoBar: some View {
+    if let lastDismissal = store.lastDismissal {
+      UndoBarView(
+        title: lastDismissal.title, duration: undoBarDuration, undo: store.undoLastDismissal,
+        expire: { store.expireUndo(lastDismissal) }
+      )
+      .id(lastDismissal.id)
+      .padding(Theme.Spacing.s)
     }
   }
 

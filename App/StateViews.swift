@@ -69,3 +69,48 @@ struct SettingsCaption: View {
     }
   }
 }
+
+// Floats over the bottom of the list after a dismiss. The line under it runs out, then the bar calls expire.
+struct UndoBarView: View {
+  let title: String
+  let duration: Duration
+  let undo: () -> Void
+  let expire: () -> Void
+  @State private var remainingFraction: CGFloat = 1
+
+  var body: some View {
+    VStack(spacing: 0) {
+      HStack(spacing: Theme.Spacing.s) {
+        Text("Dismissed \u{201C}\(title)\u{201D}")
+          .font(Theme.Fonts.rowMeta)
+          .foregroundStyle(Theme.textPrimary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+        Spacer(minLength: Theme.Spacing.s)
+        Text("\u{2318}Z").font(Theme.Fonts.legend).foregroundStyle(Theme.textSecondary).accessibilityHidden(true)
+        Button("Undo", action: undo)
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+      }
+      .padding(.leading, Theme.Spacing.m)
+      .padding(.trailing, Theme.Spacing.s)
+      .padding(.vertical, Theme.Spacing.s)
+      GeometryReader { proxy in
+        Rectangle()
+          .fill(Theme.textSecondary)
+          .frame(width: proxy.size.width * remainingFraction)
+      }
+      .frame(height: 2)
+      .accessibilityHidden(true)
+    }
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.banner))
+    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.banner))
+    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.banner).stroke(Theme.cardStroke))
+    .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+    .task {
+      withAnimation(.linear(duration: Double(duration.components.seconds))) { remainingFraction = 0 }
+      try? await Task.sleep(for: duration)
+      if !Task.isCancelled { expire() }
+    }
+  }
+}

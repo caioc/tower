@@ -47,6 +47,8 @@ public struct PullRequest: Codable, Sendable, Equatable {
   public var approvalCount: Int
   public var requiredApprovalCount: Int
   public var viewerLatestReviewState: ReviewState?
+  // The head commit SHA. A new commit brings back a dismissed review request.
+  public var headCommitId: String?
 
   public init(
     repository: String, number: Int, title: String, url: URL, author: String, authorIsBot: Bool, isDraft: Bool,
@@ -54,7 +56,7 @@ public struct PullRequest: Codable, Sendable, Equatable {
     failedCheckCount: Int, additions: Int, deletions: Int, requestedReviewerLogins: [String],
     requestedTeamSlugs: [String], reviewCount: Int, reviewRequestedAt: Date?, unresolvedThreadCount: Int = 0,
     hasMoreThreadsThanFetched: Bool = false, approvalCount: Int = 0, requiredApprovalCount: Int = 1,
-    viewerLatestReviewState: ReviewState? = nil
+    viewerLatestReviewState: ReviewState? = nil, headCommitId: String? = nil
   ) {
     self.repository = repository
     self.number = number
@@ -78,6 +80,7 @@ public struct PullRequest: Codable, Sendable, Equatable {
     self.hasMoreThreadsThanFetched = hasMoreThreadsThanFetched
     self.approvalCount = approvalCount
     self.requiredApprovalCount = requiredApprovalCount
+    self.headCommitId = headCommitId
     self.viewerLatestReviewState = viewerLatestReviewState
   }
 }
@@ -307,8 +310,8 @@ public struct QueueItem: Identifiable, Equatable, Sendable {
   public var reference: String?
   // Nil on rows that are not one pull request (bots, tickets, pipelines).
   public var details: PullRequestDetails?
-  // Set only on failed pipeline rows, the rows the owner can dismiss.
-  public var dismissal: PipelineDismissal?
+  // Set only on the rows the owner can dismiss: failed pipelines and single review requests.
+  public var dismissal: Dismissal?
   // Non-empty on a group row (bot PRs, PRs with the same title prefix). The panel expands it in place.
   public var children: [QueueItem]
 
@@ -316,7 +319,7 @@ public struct QueueItem: Identifiable, Equatable, Sendable {
     id: String, title: String, tag: String? = nil, meta: String, metaTeam: String? = nil, url: URL,
     symbol: RowSymbol, badge: Badge?,
     sortDate: Date, strip: StatusStrip? = nil, reference: String? = nil, details: PullRequestDetails? = nil,
-    dismissal: PipelineDismissal? = nil, children: [QueueItem] = []
+    dismissal: Dismissal? = nil, children: [QueueItem] = []
   ) {
     self.id = id
     self.title = title

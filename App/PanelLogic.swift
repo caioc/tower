@@ -133,7 +133,7 @@ enum PanelAction: Equatable, Sendable {
 }
 
 // Click, Cmd-click and Return work on every row. Space and Cmd-C act only on rows with PR details.
-// Cmd-Delete acts only on dismissible rows (failed pipelines). Right-click acts on both kinds.
+// Cmd-Delete acts only on dismissible rows (failed pipelines, single review requests). Right-click acts on both kinds.
 func panelAction(
   for input: PanelInput, selectedItemHasDetails: Bool, isPopoverOpen: Bool, selectedItemIsDismissible: Bool = false
 ) -> PanelAction {
@@ -171,8 +171,9 @@ func panelKeyOutcome(for action: PanelAction, selectedItemId: String?, popoverIt
     return PanelKeyOutcome(popoverItemId: nil)
   case .copyLink:
     return PanelKeyOutcome(popoverItemId: popoverItemId, copiesSelectedLink: true)
+  // The dismissed row leaves the list, so its popover closes with it.
   case .dismiss:
-    return PanelKeyOutcome(popoverItemId: popoverItemId, dismissesSelectedItem: true)
+    return PanelKeyOutcome(popoverItemId: nil, dismissesSelectedItem: true)
   case .closePanel, .ignore, .openAndClosePanel, .openInBackground, .showContextMenu:
     return PanelKeyOutcome(popoverItemId: popoverItemId, isHandled: false)
   }
