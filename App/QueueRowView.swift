@@ -67,7 +67,7 @@ struct QueueRowView: View {
         .font(.system(size: Theme.Metrics.symbolSize))
         .foregroundStyle(isSelected ? Theme.selectionText : symbolColor)
         .frame(width: Theme.Metrics.iconColumn)
-        // The badge text carries the meaning, so VoiceOver skips the glyph.
+        // The row label carries the meaning (badge text, Jira issue type), so VoiceOver skips the glyph.
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
         Text(item.title)
