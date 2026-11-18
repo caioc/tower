@@ -36,7 +36,8 @@ jobs:
       - name: Build and test
         run: |
           xcodebuild -scheme Tower -destination 'platform=macOS' \
-            -enableCodeCoverage YES -resultBundlePath build/Test.xcresult test
+            -enableCodeCoverage YES -resultBundlePath build/Test.xcresult \
+            CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test
 
       - name: Convert coverage
         run: scripts/xccov-to-sonarqube-generic.sh build/Test.xcresult > build/coverage.xml
