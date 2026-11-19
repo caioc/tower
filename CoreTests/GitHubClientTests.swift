@@ -49,6 +49,16 @@ private struct RendezvousTransport: HTTPTransport {
   }
 }
 
+private func authoredPage(_ fixtureData: Data, hasNextPage: Bool, endCursor: String) throws -> Data {
+  var page = try #require(try JSONSerialization.jsonObject(with: fixtureData) as? [String: Any])
+  var pageData = try #require(page["data"] as? [String: Any])
+  var pageAuthored = try #require(pageData["authored"] as? [String: Any])
+  pageAuthored["pageInfo"] = ["hasNextPage": hasNextPage, "endCursor": endCursor]
+  pageData["authored"] = pageAuthored
+  page["data"] = pageData
+  return try JSONSerialization.data(withJSONObject: page)
+}
+
 private func client(token: Result<String, SourceFailure> = .success("secret-token"), transport: StubTransport) -> GitHubClient {
   GitHubClient(tokenProvider: StubTokenProvider(result: token), transport: transport)
 }
@@ -170,15 +180,13 @@ struct GitHubClientTests {
   }
 
   @Test func authoredSearchStopsAtThePageCap() async throws {
-    var page = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
-    var pageData = try #require(page["data"] as? [String: Any])
-    var pageAuthored = try #require(pageData["authored"] as? [String: Any])
-    pageAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": "cursor-1"]
-    pageData["authored"] = pageAuthored
-    page["data"] = pageData
-    let body = try JSONSerialization.data(withJSONObject: page)
-
-    let transport = StubTransport { _ in (body, 200) }
+    let fixtureData = try fixture("github-search.json")
+    // Each page points to the next one, and page 11 is the last, so a missing cap ends with 11 requests, not a loop.
+    let transport = StubTransport { request in
+      let cursor = (try variables(in: request))["cursor"] as? String
+      let pageNumber = (cursor.flatMap { Int($0.dropFirst("cursor-".count)) } ?? 0) + 1
+      return (try authoredPage(fixtureData, hasNextPage: pageNumber < 11, endCursor: "cursor-\(pageNumber)"), 200)
+    }
     let snapshot = try await client(transport: transport).fetch(now: now)
     let authoredRequests = transport.requests.filter { request in
       ((try? variables(in: request))?["authoredQuery"] as? String) != nil
@@ -186,6 +194,26 @@ struct GitHubClientTests {
     #expect(authoredRequests.count == 10)
     // Every page repeats the same 2 pull requests, and a repeat shows once.
     #expect(snapshot.authoredPullRequests.count == 2)
+  }
+
+  @Test func pageThatRepeatsItsCursorFails() async throws {
+    let body = try authoredPage(try fixture("github-search.json"), hasNextPage: true, endCursor: "cursor-1")
+    let transport = StubTransport { _ in (body, 200) }
+    await #expect(throws: SourceFailure.unexpected("GitHub search page repeated its cursor")) {
+      try await client(transport: transport).fetch(now: now)
+    }
+  }
+
+  @Test func badGatewayOnALaterAuthoredPageIsRetriedWithTheSameCursor() async throws {
+    let fixtureData = try fixture("github-search.json")
+    let firstBody = try authoredPage(fixtureData, hasNextPage: true, endCursor: "cursor-1")
+    let secondPageAttempts = AttemptCounter()
+    let transport = StubTransport { request in
+      guard (try variables(in: request))["cursor"] as? String == "cursor-1" else { return (firstBody, 200) }
+      return secondPageAttempts.next() == 1 ? (Data(), 502) : (fixtureData, 200)
+    }
+    _ = try await client(transport: transport).fetch(now: now)
+    #expect(secondPageAttempts.count == 2)
   }
 
   @Test func authoredPullRequestOnTwoPagesShowsOnce() async throws {

@@ -137,6 +137,7 @@ public struct GitHubClient: Sendable {
   private func fetchAuthoredPullRequests(token: String, query: String) async throws(SourceFailure) -> [PullRequestNode?] {
     var nodes: [PullRequestNode?] = []
     var cursor: String?
+    var usedCursors: Set<String> = []
     for _ in 0..<Self.maxAuthoredPages {
       var variables: [String: Any] = ["authoredQuery": query, "pageSize": Self.authoredPageSize]
       if let cursor { variables["cursor"] = cursor }
@@ -147,9 +148,12 @@ public struct GitHubClient: Sendable {
       }
       nodes += page.nodes
       guard page.pageInfo.hasNextPage else { break }
-      // Stopping here would save a short list as if it were complete.
+      // Stopping here, or reading the same page again, would save a short list as if it were complete.
       guard let endCursor = page.pageInfo.endCursor else {
         throw .unexpected("GitHub search page has no cursor")
+      }
+      guard usedCursors.insert(endCursor).inserted else {
+        throw .unexpected("GitHub search page repeated its cursor")
       }
       cursor = endCursor
     }
