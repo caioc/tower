@@ -92,6 +92,11 @@ struct UndoableDismissal: Equatable {
   private let loadJiraSettings: () -> JiraSettings?
   private let loadCircleCISettings: () -> CircleCISettings?
   private let loadGitHubOrganizations: () -> [String]
+  private let notifier: (any Notifier)?
+  private let loadEnabledNotificationKinds: () -> Set<NotificationEventKind>
+  // Set only by a successful fetch in this app run, never by the cache, so launch does not post old changes.
+  private var githubNotificationBaseline: GitHubSnapshot?
+  private var circleciNotificationBaseline: [Pipeline]?
   private let defaults: UserDefaults
   private var pollingTask: Task<Void, Never>?
   #if DEBUG
@@ -106,6 +111,8 @@ struct UndoableDismissal: Equatable {
     loadJiraSettings: @escaping () -> JiraSettings? = { JiraSettingsKeys.load() },
     loadCircleCISettings: @escaping () -> CircleCISettings? = { CircleCISettingsKeys.load() },
     loadGitHubOrganizations: @escaping () -> [String] = { GitHubSettingsKeys.loadOrganizations() },
+    notifier: (any Notifier)? = nil,
+    loadEnabledNotificationKinds: @escaping () -> Set<NotificationEventKind> = { NotificationSettingsKeys.enabledKinds() },
     defaults: UserDefaults = .standard,
     undoDuration: Duration = .seconds(5)
   ) {
@@ -115,6 +122,8 @@ struct UndoableDismissal: Equatable {
     self.loadJiraSettings = loadJiraSettings
     self.loadCircleCISettings = loadCircleCISettings
     self.loadGitHubOrganizations = loadGitHubOrganizations
+    self.notifier = notifier
+    self.loadEnabledNotificationKinds = loadEnabledNotificationKinds
     self.defaults = defaults
     self.undoDuration = undoDuration
     dismissedPipelines = DismissalKeys.load(DismissalKeys.dismissedPipelines, defaults: defaults)
@@ -213,6 +222,11 @@ struct UndoableDismissal: Equatable {
         dismissedPullRequests = keptPullRequestDismissals
         DismissalKeys.save(keptPullRequestDismissals, key: DismissalKeys.dismissedPullRequests, defaults: defaults)
       }
+      if let githubNotificationBaseline {
+        post(notificationEvents(
+          previous: githubNotificationBaseline, current: snapshot, dismissedPullRequests: dismissedPullRequests))
+      }
+      githubNotificationBaseline = snapshot
     case .failure(let failure):
       githubStatus = .failed(failure)
     }
@@ -242,14 +256,29 @@ struct UndoableDismissal: Equatable {
         dismissedPipelines = keptDismissals
         DismissalKeys.save(keptDismissals, key: DismissalKeys.dismissedPipelines, defaults: defaults)
       }
+      if let circleciNotificationBaseline {
+        post(notificationEvents(
+          previous: circleciNotificationBaseline, current: fetchedPipelines, dismissedPipelines: dismissedPipelines))
+      }
+      circleciNotificationBaseline = fetchedPipelines
     case .failure(let failure):
       circleciStatus = .failed(failure)
       if failure == .notConfigured {
         pipelines = nil
         circleciFetchedAt = nil
+        // A later setup starts a new baseline, so its first fetch posts nothing.
+        circleciNotificationBaseline = nil
       }
     }
     rebuild()
+  }
+
+  private func post(_ events: [NotificationEvent]) {
+    guard let notifier, !events.isEmpty else { return }
+    let enabledKinds = loadEnabledNotificationKinds()
+    for event in events where enabledKinds.contains(event.kind) {
+      notifier.post(event)
+    }
   }
 
   func dismiss(_ item: QueueItem) {
