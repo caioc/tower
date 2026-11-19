@@ -161,7 +161,7 @@ private let searchQuery = """
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
     reviews(first: 1) { totalCount }
     viewerLatestReview { state }
-    timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 10) { nodes { ... on ReviewRequestedEvent {
+    timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 25) { nodes { ... on ReviewRequestedEvent {
       createdAt requestedReviewer { ... on User { login } ... on Team { slug } } } } }
   }
   fragment AuthoredPullRequestFields on PullRequest {
@@ -286,11 +286,13 @@ private struct PullRequestNode: Decodable {
     let failedStatusContexts = (rollup?.contexts.statusContextCountsByState ?? [])
       .filter { GitHubClient.isFailedStatusContextState($0.state) }.reduce(0) { $0 + $1.count }
     let reviewers = reviewRequests?.nodes.compactMap(\.requestedReviewer) ?? []
-    // A request to someone else must not move the viewer's request time. Older or unknown events fall back to the newest.
     let requestEvents = timelineItems?.nodes ?? []
+    // Tower does not know the viewer's teams, so a team-only request matches any requested team.
+    let isDirectRequest = reviewers.contains { $0.login == viewerLogin }
     let viewerRequestEvent = requestEvents.last { event in
-      event.requestedReviewer?.login == viewerLogin
-        || event.requestedReviewer?.slug.map { reviewers.compactMap(\.slug).contains($0) } == true
+      isDirectRequest
+        ? event.requestedReviewer?.login == viewerLogin
+        : event.requestedReviewer?.slug.map { reviewers.compactMap(\.slug).contains($0) } == true
     }
     let requiredApprovalCounts = baseRef?.rules?.nodes.compactMap { $0.parameters?.requiredApprovingReviewCount } ?? []
     return PullRequest(
@@ -301,12 +303,13 @@ private struct PullRequestNode: Decodable {
       failedCheckCount: failedCheckRuns + failedStatusContexts,
       additions: additions ?? 0, deletions: deletions ?? 0,
       requestedReviewerLogins: reviewers.compactMap(\.login), requestedTeamSlugs: reviewers.compactMap(\.slug),
-      reviewCount: reviews?.totalCount ?? 0, reviewRequestedAt: (viewerRequestEvent ?? requestEvents.last)?.createdAt,
+      reviewCount: reviews?.totalCount ?? 0, reviewRequestedAt: requestEvents.last?.createdAt,
       unresolvedThreadCount: reviewThreads?.nodes.filter { !$0.isResolved }.count ?? 0,
       hasMoreThreadsThanFetched: (reviewThreads?.totalCount ?? 0) > reviewThreadPageSize,
       approvalCount: latestOpinionatedReviews?.nodes.filter { $0.state == "APPROVED" }.count ?? 0,
       requiredApprovalCount: requiredApprovalCounts.max() ?? 1,
-      viewerLatestReviewState: viewerLatestReview.flatMap { ReviewState(rawValue: $0.state) }, headCommitId: headRefOid)
+      viewerLatestReviewState: viewerLatestReview.flatMap { ReviewState(rawValue: $0.state) }, headCommitId: headRefOid,
+      viewerReviewRequestedAt: viewerRequestEvent?.createdAt)
   }
 }
 

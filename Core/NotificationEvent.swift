@@ -52,8 +52,8 @@ public func notificationEvents(
       events.append(pullRequest.event(.ciPassed, state: pullRequest.headCommitId ?? ""))
     }
   }
-  let previousRequests = Set(
-    previous.reviewRequests.filter { isOpenReviewRequest($0, viewerLogin: previous.viewerLogin) }.map(\.reviewRequestKey))
+  // Every previous request counts, so a stale approval that reopens an old request posts nothing.
+  let previousRequests = Set(previous.reviewRequests.map(\.reviewRequestKey))
   for pullRequest in current.reviewRequests
   where isOpenReviewRequest(pullRequest, viewerLogin: current.viewerLogin)
     && !previousRequests.contains(pullRequest.reviewRequestKey)
@@ -72,11 +72,12 @@ public func notificationEvents(
   let previousById = Dictionary(previous.map { ($0.id, $0) }) { first, _ in first }
   return current.compactMap { pipeline in
     guard !pipeline.hasPullRequest, !dismissedPipelines.contains(pipeline.dismissal) else { return nil }
-    // A rerun adds a newer workflow, so a result from the older workflow does not count.
     let previousPipeline = previousById[pipeline.id]
-    let previousState =
-      previousPipeline?.newestWorkflowId == pipeline.newestWorkflowId ? previousPipeline?.state ?? .running : .running
-    guard pipeline.state != previousState else { return nil }
+    let previousState = previousPipeline?.state ?? .running
+    // A rerun that fails again between two refreshes stays failed, so a newly failed workflow counts as a change.
+    let failedWorkflowIds = Set(pipeline.failedWorkflowIds ?? [])
+    let hasNewFailure = !failedWorkflowIds.subtracting(previousPipeline?.failedWorkflowIds ?? []).isEmpty
+    guard pipeline.state != previousState || (pipeline.state == .failed && hasNewFailure) else { return nil }
     let kind: NotificationEventKind
     switch pipeline.state {
     case .failed: kind = .ciFailed
@@ -95,7 +96,9 @@ extension PullRequest {
   // Holds the request time, so a new request on the same PR gives a new key. A new commit does not.
   fileprivate var reviewRequestKey: String { "\(url.absoluteString):\(reviewRequestTime)" }
 
-  fileprivate var reviewRequestTime: String { reviewRequestedAt.map { "\($0.timeIntervalSince1970)" } ?? "" }
+  fileprivate var reviewRequestTime: String {
+    (viewerReviewRequestedAt ?? reviewRequestedAt).map { "\($0.timeIntervalSince1970)" } ?? ""
+  }
 
   fileprivate func event(_ kind: NotificationEventKind, state: String) -> NotificationEvent {
     NotificationEvent(

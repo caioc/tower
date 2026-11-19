@@ -85,6 +85,7 @@ public struct CircleCIClient: Sendable {
         runs.max { $0.createdAt < $1.createdAt }
       }
       pipeline.state = Self.state(workflowStatuses: newestRuns.map(\.status))
+      pipeline.failedWorkflowIds = newestRuns.filter { Self.failedStatuses.contains($0.status) }.map(\.id).sorted()
       // A rerun adds a newer workflow, so a dismissed pipeline that fails again shows again.
       pipeline.newestWorkflowId = workflows.items.max { $0.createdAt < $1.createdAt }?.id
     }

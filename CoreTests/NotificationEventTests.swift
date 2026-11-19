@@ -39,13 +39,14 @@ private func githubEvents(
 }
 
 private func pipeline(
-  number: Int = 1842, state: PipelineState, hasPullRequest: Bool = false, newestWorkflowId: String? = "workflow-1"
+  number: Int = 1842, state: PipelineState, hasPullRequest: Bool = false, newestWorkflowId: String? = "workflow-1",
+  failedWorkflowIds: [String]? = nil
 ) -> Pipeline {
   Pipeline(
     id: "pipeline-\(number)", projectSlug: "gh/acme/app-web", number: number, ref: "main", refIsTag: false,
     triggerType: "api", hasPullRequest: hasPullRequest, createdAt: requestTime, state: state,
     url: URL(string: "https://app.circleci.com/pipelines/github/acme/app-web/\(number)")!,
-    newestWorkflowId: newestWorkflowId)
+    newestWorkflowId: newestWorkflowId, failedWorkflowIds: failedWorkflowIds)
 }
 
 private func pipelineEvents(
@@ -177,6 +178,27 @@ struct ReviewRequestEventTests {
     #expect(events.isEmpty)
   }
 
+  @Test func approvedTeamRequestThatOpensAgainWithTheSameTimeGivesNoEvent() {
+    let teamRequest = pullRequest(requestedReviewerLogins: [], requestedTeamSlugs: ["web"], viewerLatestReviewState: .approved)
+    var reopenedRequest = teamRequest
+    reopenedRequest.viewerLatestReviewState = .dismissed
+    let events = githubEvents(
+      previous: snapshot(reviewRequests: [teamRequest]), current: snapshot(reviewRequests: [reopenedRequest]))
+    #expect(events.isEmpty)
+  }
+
+  @Test func viewerRequestTimeWinsOverTheNewestRequestTime() {
+    let firstRequest = pullRequest(reviewRequestedAt: requestTime)
+    var laterRequestToSomeoneElse = firstRequest
+    laterRequestToSomeoneElse.reviewRequestedAt = requestTime.addingTimeInterval(60)
+    laterRequestToSomeoneElse.viewerReviewRequestedAt = requestTime
+    var previousRequest = firstRequest
+    previousRequest.viewerReviewRequestedAt = requestTime
+    let events = githubEvents(
+      previous: snapshot(reviewRequests: [previousRequest]), current: snapshot(reviewRequests: [laterRequestToSomeoneElse]))
+    #expect(events.isEmpty)
+  }
+
   @Test func dismissedReviewRequestGivesNoEvent() {
     let request = pullRequest()
     let events = githubEvents(
@@ -218,9 +240,16 @@ struct PipelineEventTests {
 
   @Test func rerunThatFailsAfterAnOlderFailureGivesCIFailed() {
     let events = pipelineEvents(
-      previous: [pipeline(state: .failed, newestWorkflowId: "workflow-1")],
-      current: [pipeline(state: .failed, newestWorkflowId: "workflow-2")])
-    #expect(events.map(\.id) == ["ciFailed:pipeline:pipeline-1842:workflow-2"])
+      previous: [pipeline(state: .failed, newestWorkflowId: "build-1", failedWorkflowIds: ["build-1"])],
+      current: [pipeline(state: .failed, newestWorkflowId: "build-2", failedWorkflowIds: ["build-2"])])
+    #expect(events.map(\.id) == ["ciFailed:pipeline:pipeline-1842:build-2"])
+  }
+
+  @Test func rerunOfAnotherWorkflowWhileOneStaysFailedGivesNoEvent() {
+    let events = pipelineEvents(
+      previous: [pipeline(state: .failed, newestWorkflowId: "build-1", failedWorkflowIds: ["build-1"])],
+      current: [pipeline(state: .failed, newestWorkflowId: "deploy-2", failedWorkflowIds: ["build-1"])])
+    #expect(events.isEmpty)
   }
 
   @Test func canceledPipelineGivesNoEvent() {

@@ -97,7 +97,7 @@ struct UndoableDismissal: Equatable {
   // Set only by a successful fetch in this app run, never by the cache, so launch does not post old changes.
   // Each baseline keeps the settings it was fetched with. New settings start a new baseline that posts nothing.
   private var githubNotificationBaseline: (snapshot: GitHubSnapshot, organizations: [String])?
-  private var circleciNotificationBaseline: (pipelines: [Pipeline], projectSlugs: [String])?
+  private var circleciNotificationBaseline: (pipelines: [Pipeline], settings: CircleCISettings?)?
   private let defaults: UserDefaults
   private var pollingTask: Task<Void, Never>?
   #if DEBUG
@@ -263,11 +263,11 @@ struct UndoableDismissal: Equatable {
         dismissedPipelines = keptDismissals
         DismissalKeys.save(keptDismissals, key: DismissalKeys.dismissedPipelines, defaults: defaults)
       }
-      let projectSlugs = circleciSettings?.projectSlugs ?? []
-      if let baseline = circleciNotificationBaseline, baseline.projectSlugs == projectSlugs {
+      // The token picks the account whose pipelines "mine" returns, so a new token is a new baseline too.
+      if let baseline = circleciNotificationBaseline, baseline.settings == circleciSettings {
         post(notificationEvents(previous: baseline.pipelines, current: fetchedPipelines, dismissedPipelines: dismissedPipelines))
       }
-      circleciNotificationBaseline = (fetchedPipelines, projectSlugs)
+      circleciNotificationBaseline = (fetchedPipelines, circleciSettings)
     case .failure(let failure):
       circleciStatus = .failed(failure)
       if failure == .notConfigured {

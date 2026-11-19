@@ -63,6 +63,7 @@ private func circleciTransport(_ response: CircleCIResponse) throws -> StubTrans
 // The test changes the values only between refreshes, so no lock is needed.
 private final class SettingsBox: @unchecked Sendable {
   var organizations: [String] = []
+  var circleciToken = "circle-token"
 }
 
 @MainActor private func makeStore(
@@ -74,7 +75,7 @@ private final class SettingsBox: @unchecked Sendable {
     cacheDirectory: cacheDirectory
       ?? FileManager.default.temporaryDirectory.appendingPathComponent("tower-notify-\(UUID().uuidString)"),
     loadJiraSettings: { nil },
-    loadCircleCISettings: { CircleCISettings(apiToken: "circle-token", projectSlugs: ["gh/acme/app-web"]) },
+    loadCircleCISettings: { CircleCISettings(apiToken: settings.circleciToken, projectSlugs: ["gh/acme/app-web"]) },
     loadGitHubOrganizations: { settings.organizations }, notifier: notifier, loadEnabledNotificationKinds: { enabledKinds },
     defaults: UserDefaults(suiteName: "tower-notify-\(UUID().uuidString)")!)
 }
@@ -133,6 +134,18 @@ private final class SettingsBox: @unchecked Sendable {
     response.workflowStatus = "failed"
     await store.refresh()
     #expect(notifier.postedEvents.map(\.kind) == [.ciFailed])
+  }
+
+  @Test func newCircleCITokenStartsANewBaseline() async throws {
+    let response = CircleCIResponse()
+    let notifier = FakeNotifier()
+    let settings = SettingsBox()
+    let store = makeStore(transport: try circleciTransport(response), notifier: notifier, settings: settings)
+    await store.refresh()
+    settings.circleciToken = "other-account-token"
+    response.workflowStatus = "failed"
+    await store.refresh()
+    #expect(notifier.postedEvents.isEmpty)
   }
 
   @Test func kindThatIsOffIsNotPosted() async throws {

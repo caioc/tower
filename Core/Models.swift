@@ -49,6 +49,9 @@ public struct PullRequest: Codable, Sendable, Equatable {
   public var viewerLatestReviewState: ReviewState?
   // The head commit SHA. A new commit brings back a dismissed review request.
   public var headCommitId: String?
+  // The newest review request aimed at the viewer, or at a requested team when the request is team-only.
+  // Notifications read it, so a request to someone else does not look like a new request to the viewer.
+  public var viewerReviewRequestedAt: Date?
 
   public init(
     repository: String, number: Int, title: String, url: URL, author: String, authorIsBot: Bool, isDraft: Bool,
@@ -56,7 +59,7 @@ public struct PullRequest: Codable, Sendable, Equatable {
     failedCheckCount: Int, additions: Int, deletions: Int, requestedReviewerLogins: [String],
     requestedTeamSlugs: [String], reviewCount: Int, reviewRequestedAt: Date?, unresolvedThreadCount: Int = 0,
     hasMoreThreadsThanFetched: Bool = false, approvalCount: Int = 0, requiredApprovalCount: Int = 1,
-    viewerLatestReviewState: ReviewState? = nil, headCommitId: String? = nil
+    viewerLatestReviewState: ReviewState? = nil, headCommitId: String? = nil, viewerReviewRequestedAt: Date? = nil
   ) {
     self.repository = repository
     self.number = number
@@ -82,6 +85,7 @@ public struct PullRequest: Codable, Sendable, Equatable {
     self.requiredApprovalCount = requiredApprovalCount
     self.headCommitId = headCommitId
     self.viewerLatestReviewState = viewerLatestReviewState
+    self.viewerReviewRequestedAt = viewerReviewRequestedAt
   }
 }
 
@@ -134,10 +138,13 @@ public struct Pipeline: Codable, Sendable, Equatable {
   public var url: URL
   // Nil when the client did not read the workflows: a PR pipeline, an errored pipeline or no workflows.
   public var newestWorkflowId: String?
+  // The newest run of each workflow name that failed. A rerun of another workflow leaves it the same.
+  public var failedWorkflowIds: [String]?
 
   public init(
     id: String, projectSlug: String, number: Int, ref: String, refIsTag: Bool, triggerType: String,
-    hasPullRequest: Bool, createdAt: Date, state: PipelineState, url: URL, newestWorkflowId: String?
+    hasPullRequest: Bool, createdAt: Date, state: PipelineState, url: URL, newestWorkflowId: String?,
+    failedWorkflowIds: [String]? = nil
   ) {
     self.id = id
     self.projectSlug = projectSlug
@@ -150,6 +157,7 @@ public struct Pipeline: Codable, Sendable, Equatable {
     self.state = state
     self.url = url
     self.newestWorkflowId = newestWorkflowId
+    self.failedWorkflowIds = failedWorkflowIds
   }
 }
 

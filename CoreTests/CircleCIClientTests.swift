@@ -119,12 +119,12 @@ struct CircleCIClientTests {
         id: "80f96bcb-62b4-4eee-9b92-24d709a8b5c3", projectSlug: "gh/acme/app-web", number: 6000, ref: "main",
         refIsTag: false, triggerType: "webhook", hasPullRequest: false, createdAt: fractionalDate("2027-01-15T09:43:16.805Z"),
         state: .failed, url: URL(string: "https://app.circleci.com/pipelines/github/acme/app-web/6000")!,
-        newestWorkflowId: "ab430a84-e501-4529-b4c9-20cc4c4a75e6"),
+        newestWorkflowId: "ab430a84-e501-4529-b4c9-20cc4c4a75e6", failedWorkflowIds: ["ab430a84-e501-4529-b4c9-20cc4c4a75e6"]),
       Pipeline(
         id: "ecb77895-f2fd-4135-8535-a7d83b9c27fd", projectSlug: "gh/acme/app-web", number: 5952, ref: "main",
         refIsTag: false, triggerType: "api", hasPullRequest: false, createdAt: fractionalDate("2027-01-14T20:12:44.208Z"),
         state: .succeeded, url: URL(string: "https://app.circleci.com/pipelines/github/acme/app-web/5952")!,
-        newestWorkflowId: "ab5d9618-5c36-4df1-8648-dbec8ff09e11"),
+        newestWorkflowId: "ab5d9618-5c36-4df1-8648-dbec8ff09e11", failedWorkflowIds: []),
     ])
   }
 
@@ -261,6 +261,15 @@ struct CircleCIClientTests {
       (id: "first-run", name: "trunk-based", status: "failed", createdAt: "2027-01-15T09:44:25.166Z"),
     ])
     #expect(try await releasePipeline(workflowData: workflowData).newestWorkflowId == "rerun")
+  }
+
+  @Test func failedWorkflowIdsAreTheNewestRunsThatFailed() async throws {
+    let workflowData = try workflowList(identifiedRuns: [
+      (id: "build-1", name: "build", status: "failed", createdAt: "2027-01-15T09:00:00.000Z"),
+      (id: "deploy-1", name: "deploy", status: "failed", createdAt: "2027-01-15T09:01:00.000Z"),
+      (id: "deploy-2", name: "deploy", status: "running", createdAt: "2027-01-15T09:05:00.000Z"),
+    ])
+    #expect(try await releasePipeline(workflowData: workflowData).failedWorkflowIds == ["build-1"])
   }
 
   @Test func erroredPipelineHasNoNewestWorkflowId() async throws {
