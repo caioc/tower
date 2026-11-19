@@ -74,15 +74,74 @@ struct GitHubClientTests {
     let fixtureData = try fixture("github-search.json")
     let transport = StubTransport { _ in (fixtureData, 200) }
     _ = try await client(transport: transport).fetch(now: now)
-    let body = try #require(transport.requests.first?.httpBody)
-    let variables = try #require((try JSONSerialization.jsonObject(with: body) as? [String: Any])?["variables"] as? [String: String])
     let today = localStartOfDayTimestamp(now)
-    #expect(variables["authoredQuery"] == "is:pr is:open author:@me archived:false")
-    #expect(variables["requestedQuery"] == "is:pr is:open review-requested:@me archived:false")
-    #expect(variables["mergedQuery"] == "is:pr author:@me merged:>=\(today)")
-    #expect(variables["reviewedQuery"] == "is:pr reviewed-by:@me -author:@me updated:>=\(today)")
     let monthAgo = localStartOfDayTimestamp(Calendar.current.date(byAdding: .day, value: -30, to: now)!)
-    #expect(variables["recentlyMergedQuery"] == "is:pr author:@me is:merged merged:>=\(monthAgo) sort:updated-desc")
+    let summary = try variables(containing: "requestedQuery", in: transport)
+    #expect(summary["requestedQuery"] as? String == "is:pr is:open review-requested:@me archived:false")
+    #expect(summary["mergedQuery"] as? String == "is:pr author:@me merged:>=\(today)")
+    #expect(summary["reviewedQuery"] as? String == "is:pr reviewed-by:@me -author:@me updated:>=\(today)")
+    #expect(summary["recentlyMergedQuery"] as? String == "is:pr author:@me is:merged merged:>=\(monthAgo) sort:updated-desc")
+    let authored = try variables(containing: "authoredQuery", in: transport)
+    #expect(authored["authoredQuery"] as? String == "is:pr is:open author:@me archived:false")
+  }
+
+  @Test func authoredSearchAsksForASmallPage() async throws {
+    let fixtureData = try fixture("github-search.json")
+    let transport = StubTransport { _ in (fixtureData, 200) }
+    _ = try await client(transport: transport).fetch(now: now)
+    let authored = try variables(containing: "authoredQuery", in: transport)
+    #expect(authored["pageSize"] as? Int == 20)
+    #expect(authored["cursor"] == nil)
+  }
+
+  @Test func authoredSearchFollowsTheCursorUntilTheLastPage() async throws {
+    var firstPage = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
+    var firstData = try #require(firstPage["data"] as? [String: Any])
+    var firstAuthored = try #require(firstData["authored"] as? [String: Any])
+    firstAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": "cursor-1"]
+    firstData["authored"] = firstAuthored
+    firstPage["data"] = firstData
+    let firstBody = try JSONSerialization.data(withJSONObject: firstPage)
+
+    var lastPage = firstPage
+    var lastData = try #require(lastPage["data"] as? [String: Any])
+    lastData["authored"] = [
+      "nodes": [], "pageInfo": ["hasNextPage": false, "endCursor": NSNull()],
+    ]
+    lastPage["data"] = lastData
+    let lastBody = try JSONSerialization.data(withJSONObject: lastPage)
+
+    let transport = StubTransport { request in
+      let cursor = (try variables(in: request))["cursor"] as? String
+      return (cursor == "cursor-1" ? lastBody : firstBody, 200)
+    }
+    let snapshot = try await client(transport: transport).fetch(now: now)
+    #expect(snapshot.authoredPullRequests.count == 2)
+    let authoredRequests = transport.requests.filter { request in
+      ((try? variables(in: request))?["authoredQuery"] as? String) != nil
+    }
+    #expect(authoredRequests.count == 2)
+    let secondPageBody = try #require(authoredRequests.last?.httpBody)
+    let secondPageVariables = try variables(in: secondPageBody)
+    #expect(secondPageVariables["cursor"] as? String == "cursor-1")
+  }
+
+  @Test func authoredSearchStopsAtThePageCap() async throws {
+    var page = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
+    var pageData = try #require(page["data"] as? [String: Any])
+    var pageAuthored = try #require(pageData["authored"] as? [String: Any])
+    pageAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": "cursor-1"]
+    pageData["authored"] = pageAuthored
+    page["data"] = pageData
+    let body = try JSONSerialization.data(withJSONObject: page)
+
+    let transport = StubTransport { _ in (body, 200) }
+    let snapshot = try await client(transport: transport).fetch(now: now)
+    let authoredRequests = transport.requests.filter { request in
+      ((try? variables(in: request))?["authoredQuery"] as? String) != nil
+    }
+    #expect(authoredRequests.count == 10)
+    #expect(snapshot.authoredPullRequests.count == 20)
   }
 
   @Test func decodesRecentlyMergedPullRequests() async throws {
@@ -103,11 +162,9 @@ struct GitHubClientTests {
     let fixtureData = try fixture("github-search.json")
     let transport = StubTransport { _ in (fixtureData, 200) }
     _ = try await client(transport: transport).fetch(now: now)
-    let body = try #require(transport.requests.first?.httpBody)
-    let query = try #require((try JSONSerialization.jsonObject(with: body) as? [String: Any])?["query"] as? String)
     let stripFields = ["baseRef", "latestOpinionatedReviews", "reviewThreads"]
-    let authoredFields = try fieldsRequested(bySearch: "authored", in: query)
-    let requestedFields = try fieldsRequested(bySearch: "requested", in: query)
+    let authoredFields = try fieldsRequested(bySearch: "authored", in: try query(containing: "authoredQuery", in: transport))
+    let requestedFields = try fieldsRequested(bySearch: "requested", in: try query(containing: "requestedQuery", in: transport))
     for field in stripFields {
       #expect(authoredFields.contains(field))
       #expect(!requestedFields.contains(field))
@@ -118,9 +175,7 @@ struct GitHubClientTests {
     let fixtureData = try fixture("github-search.json")
     let transport = StubTransport { _ in (fixtureData, 200) }
     _ = try await client(transport: transport).fetch(now: now)
-    let body = try #require(transport.requests.first?.httpBody)
-    let query = try #require((try JSONSerialization.jsonObject(with: body) as? [String: Any])?["query"] as? String)
-    #expect(query.contains("reviewThreads(last: 50)"))
+    #expect(try query(containing: "authoredQuery", in: transport).contains("reviewThreads(last: 50)"))
   }
 
   @Test func requiredApprovalCountIsHighestPullRequestRule() async throws {
@@ -298,4 +353,26 @@ private func fieldsRequested(bySearch alias: String, in query: String) throws ->
 
 private func fragmentNames(spreadIn text: String) -> [String] {
   text.matches(of: /\.\.\.([A-Za-z]+)/).map { String($0.output.1) }
+}
+
+private func variables(in request: URLRequest) throws -> [String: Any] {
+  let body = try #require(request.httpBody)
+  return try variables(in: body)
+}
+
+private func variables(in body: Data) throws -> [String: Any] {
+  let payload = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+  return try #require(payload["variables"] as? [String: Any])
+}
+
+private func variables(containing variable: String, in transport: StubTransport) throws -> [String: Any] {
+  let payload = try #require(try transport.requests.map { try variables(in: $0) }.first { $0[variable] != nil })
+  return payload
+}
+
+private func query(containing variable: String, in transport: StubTransport) throws -> String {
+  let request = try #require(transport.requests.first { (try? variables(in: $0)[variable]) != nil })
+  let body = try #require(request.httpBody)
+  let payload = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+  return try #require(payload["query"] as? String)
 }

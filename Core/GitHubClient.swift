@@ -63,6 +63,10 @@ public struct GitHubClient: Sendable {
   private static let endpoint = URL(string: "https://api.github.com/graphql")!
   private static let failedCheckRunStates: Set<String> = ["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"]
   private static let failedStatusContextStates: Set<String> = ["FAILURE", "ERROR"]
+  // A search page this small keeps every request below the GitHub edge timeout, which answers a heavier one with a 502.
+  private static let authoredPageSize = 20
+  // Caps the authored search at 200 pull requests, so a response that always sends a cursor cannot loop.
+  private static let maxAuthoredPages = 10
 
   private let tokenProvider: GitHubTokenProvider
   private let transport: HTTPTransport
@@ -84,37 +88,62 @@ public struct GitHubClient: Sendable {
     let today = Self.timestampFormatter.string(from: Calendar.current.startOfDay(for: now))
     let recentlyMergedStart = Calendar.current.date(byAdding: .day, value: -recentlyMergedDays, to: now) ?? now
     let recentlyMergedSince = Self.timestampFormatter.string(from: Calendar.current.startOfDay(for: recentlyMergedStart))
-    let variables = [
-      "authoredQuery": "is:pr is:open author:@me archived:false\(ownerQualifiers)",
+    let summary = try await fetchSummary(token: token, variables: [
       "requestedQuery": "is:pr is:open review-requested:@me archived:false\(ownerQualifiers)",
       "reviewedQuery": "is:pr reviewed-by:@me -author:@me updated:>=\(today)\(ownerQualifiers)",
       "mergedQuery": "is:pr author:@me merged:>=\(today)\(ownerQualifiers)",
       "recentlyMergedQuery": "is:pr author:@me is:merged merged:>=\(recentlyMergedSince) sort:updated-desc\(ownerQualifiers)",
-    ]
+    ])
+    let authored = try await fetchAuthoredPullRequests(
+      token: token, query: "is:pr is:open author:@me archived:false\(ownerQualifiers)")
+    return GitHubSnapshot(
+      viewerLogin: summary.viewer.login,
+      authoredPullRequests: authored.compactMap { $0?.pullRequest(viewerLogin: summary.viewer.login) },
+      reviewRequests: summary.requested.nodes.compactMap { $0?.pullRequest(viewerLogin: summary.viewer.login) },
+      reviewsSubmittedToday: summary.reviewed.issueCount,
+      mergedToday: summary.merged.issueCount,
+      recentlyMergedPullRequests: (summary.recentlyMerged?.nodes ?? []).compactMap { $0?.mergedPullRequest })
+  }
+
+  private func fetchSummary(token: String, variables: [String: String]) async throws(SourceFailure) -> SummaryResponse.Payload {
+    let response: SummaryResponse = try await sendGraphQL(token: token, query: summaryQuery, variables: variables)
+    guard let payload = response.data else {
+      throw .unexpected(response.errors?.first?.message ?? "GitHub response has no data")
+    }
+    return payload
+  }
+
+  private func fetchAuthoredPullRequests(token: String, query: String) async throws(SourceFailure) -> [PullRequestNode?] {
+    var nodes: [PullRequestNode?] = []
+    var cursor: String?
+    for _ in 0..<Self.maxAuthoredPages {
+      var variables: [String: Any] = ["authoredQuery": query, "pageSize": Self.authoredPageSize]
+      if let cursor { variables["cursor"] = cursor }
+      let response: AuthoredResponse = try await sendGraphQL(token: token, query: authoredQuery, variables: variables)
+      guard let page = response.data?.authored else {
+        throw .unexpected(response.errors?.first?.message ?? "GitHub response has no data")
+      }
+      nodes += page.nodes
+      guard page.pageInfo.hasNextPage, let endCursor = page.pageInfo.endCursor else { break }
+      cursor = endCursor
+    }
+    return nodes
+  }
+
+  private func sendGraphQL<Response: Decodable>(
+    token: String, query: String, variables: [String: Any]
+  ) async throws(SourceFailure) -> Response {
     var request = URLRequest(url: Self.endpoint)
     request.httpMethod = "POST"
     request.setValue("bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": searchQuery, "variables": variables])
-
+    request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": query, "variables": variables])
     let data = try await sendMapped(request, transport: transport)
-    let response: GraphQLResponse
     do {
-      response = try Self.decoder.decode(GraphQLResponse.self, from: data)
+      return try Self.decoder.decode(Response.self, from: data)
     } catch {
       throw .unexpected("GitHub response did not decode")
     }
-    // GraphQL can return data and errors together; one failed field should not hide the PRs that did load.
-    guard let payload = response.data else {
-      throw .unexpected(response.errors?.first?.message ?? "GitHub response has no data")
-    }
-    return GitHubSnapshot(
-      viewerLogin: payload.viewer.login,
-      authoredPullRequests: payload.authored.nodes.compactMap { $0?.pullRequest(viewerLogin: payload.viewer.login) },
-      reviewRequests: payload.requested.nodes.compactMap { $0?.pullRequest(viewerLogin: payload.viewer.login) },
-      reviewsSubmittedToday: payload.reviewed.issueCount,
-      mergedToday: payload.merged.issueCount,
-      recentlyMergedPullRequests: (payload.recentlyMerged?.nodes ?? []).compactMap { $0?.mergedPullRequest })
   }
 
   private static let timestampFormatter: DateFormatter = {
@@ -140,11 +169,9 @@ private let reviewThreadPageSize = 50
 // The search reads one page of 100, newest first, so a busy month drops only the oldest merges.
 private let recentlyMergedDays = 30
 
-private let searchQuery = """
-  query($authoredQuery: String!, $requestedQuery: String!, $reviewedQuery: String!, $mergedQuery: String!,
-    $recentlyMergedQuery: String!) {
+private let summaryQuery = """
+  query($requestedQuery: String!, $reviewedQuery: String!, $mergedQuery: String!, $recentlyMergedQuery: String!) {
     viewer { login }
-    authored: search(type: ISSUE, query: $authoredQuery, first: 50) { nodes { ...AuthoredPullRequestFields } }
     requested: search(type: ISSUE, query: $requestedQuery, first: 50) { nodes { ...PullRequestFields } }
     reviewed: search(type: ISSUE, query: $reviewedQuery, first: 1) { issueCount }
     merged: search(type: ISSUE, query: $mergedQuery, first: 1) { issueCount }
@@ -152,6 +179,18 @@ private let searchQuery = """
       nodes { ... on PullRequest { title headRefName } }
     }
   }
+  \(pullRequestFieldsFragment)
+  """
+
+private let authoredQuery = """
+  query($authoredQuery: String!, $pageSize: Int!, $cursor: String) {
+    authored: search(type: ISSUE, query: $authoredQuery, first: $pageSize, after: $cursor) { pageInfo { hasNextPage endCursor } nodes { ...AuthoredPullRequestFields } }
+  }
+  \(pullRequestFieldsFragment)
+  \(authoredPullRequestFieldsFragment)
+  """
+
+private let pullRequestFieldsFragment = """
   fragment PullRequestFields on PullRequest {
     number title url isDraft updatedAt headRefName headRefOid additions deletions reviewDecision
     repository { name }
@@ -164,6 +203,9 @@ private let searchQuery = """
     timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 25) { nodes { ... on ReviewRequestedEvent {
       createdAt requestedReviewer { ... on User { login } ... on Team { slug } } } } }
   }
+  """
+
+private let authoredPullRequestFieldsFragment = """
   fragment AuthoredPullRequestFields on PullRequest {
     ...PullRequestFields
     baseRef { rules(first: 10) { nodes { parameters { ... on PullRequestParameters { requiredApprovingReviewCount } } } } }
@@ -172,25 +214,40 @@ private let searchQuery = """
   }
   """
 
-private struct GraphQLResponse: Decodable {
-  struct ErrorMessage: Decodable { var message: String }
+private struct SummaryResponse: Decodable {
   struct Payload: Decodable {
     var viewer: Viewer
-    var authored: Search
     var requested: Search
     var reviewed: Count
     var merged: Count
     // Optional so a response without this search, like the test fixtures for other fields, still decodes.
     var recentlyMerged: MergedSearch?
   }
-  struct Viewer: Decodable { var login: String }
-  // A node GitHub cannot return (for example a PR behind SAML) comes back as null next to an errors entry.
-  struct Search: Decodable { var nodes: [PullRequestNode?] }
-  struct Count: Decodable { var issueCount: Int }
-  struct MergedSearch: Decodable { var nodes: [MergedNode?] }
 
   var data: Payload?
   var errors: [ErrorMessage]?
+}
+
+private struct AuthoredResponse: Decodable {
+  struct Payload: Decodable { var authored: AuthoredSearch }
+
+  var data: Payload?
+  var errors: [ErrorMessage]?
+}
+
+private struct ErrorMessage: Decodable { var message: String }
+private struct Viewer: Decodable { var login: String }
+// A node GitHub cannot return (for example a PR behind SAML) comes back as null next to an errors entry.
+private struct Search: Decodable { var nodes: [PullRequestNode?] }
+private struct Count: Decodable { var issueCount: Int }
+private struct MergedSearch: Decodable { var nodes: [MergedNode?] }
+private struct AuthoredSearch: Decodable {
+  var nodes: [PullRequestNode?]
+  var pageInfo: PageInfo
+}
+private struct PageInfo: Decodable {
+  var hasNextPage: Bool
+  var endCursor: String?
 }
 
 // Search can return non-PR nodes as empty objects, so both fields are optional.
