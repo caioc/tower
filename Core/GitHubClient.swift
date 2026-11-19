@@ -110,9 +110,18 @@ public struct GitHubClient: Sendable {
         return .failure(error)
       }
     }()
-    // The summary error comes first, so an authentication failure there is not hidden by a later page error.
-    // Throwing here cancels the authored pages that are still running.
-    let summary = try await summaryResult.get()
+    // An authentication failure from either request wins, so the reconnect prompt shows.
+    // Throwing before the authored result is read cancels the pages that are still running.
+    let summary: SummaryResponse.Payload
+    switch await summaryResult {
+    case .success(let payload):
+      summary = payload
+    case .failure(.authentication):
+      throw .authentication
+    case .failure(let summaryFailure):
+      if case .failure(.authentication) = await authoredResult { throw .authentication }
+      throw summaryFailure
+    }
     let authored = try await authoredResult.get()
     // A search cursor does not lock the result set, so a PR can show on two pages.
     var seenURLs: Set<URL> = []

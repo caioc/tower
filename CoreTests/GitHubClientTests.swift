@@ -49,11 +49,11 @@ private struct RendezvousTransport: HTTPTransport {
   }
 }
 
-private func authoredPage(_ fixtureData: Data, hasNextPage: Bool, endCursor: String) throws -> Data {
+private func authoredPage(_ fixtureData: Data, hasNextPage: Bool, endCursor: String?) throws -> Data {
   var page = try #require(try JSONSerialization.jsonObject(with: fixtureData) as? [String: Any])
   var pageData = try #require(page["data"] as? [String: Any])
   var pageAuthored = try #require(pageData["authored"] as? [String: Any])
-  pageAuthored["pageInfo"] = ["hasNextPage": hasNextPage, "endCursor": endCursor]
+  pageAuthored["pageInfo"] = ["hasNextPage": hasNextPage, "endCursor": endCursor.map { $0 as Any } ?? NSNull()]
   pageData["authored"] = pageAuthored
   page["data"] = pageData
   return try JSONSerialization.data(withJSONObject: page)
@@ -142,17 +142,14 @@ struct GitHubClientTests {
     let authored = try variables(containing: "authoredQuery", in: transport)
     #expect(authored["pageSize"] as? Int == 20)
     #expect(authored["cursor"] == nil)
+    let authoredSearch = try query(containing: "authoredQuery", in: transport)
+    #expect(authoredSearch.contains("first: $pageSize, after: $cursor"))
   }
 
   @Test func authoredSearchFollowsTheCursorUntilTheLastPage() async throws {
-    var firstPage = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
-    var firstData = try #require(firstPage["data"] as? [String: Any])
-    var firstAuthored = try #require(firstData["authored"] as? [String: Any])
-    firstAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": "cursor-1"]
-    firstData["authored"] = firstAuthored
-    firstPage["data"] = firstData
-    let firstBody = try JSONSerialization.data(withJSONObject: firstPage)
-
+    let firstBody = try authoredPage(try fixture("github-search.json"), hasNextPage: true, endCursor: "cursor-1")
+    let firstPage = try #require(try JSONSerialization.jsonObject(with: firstBody) as? [String: Any])
+    let firstAuthored = try #require((firstPage["data"] as? [String: Any])?["authored"] as? [String: Any])
     var lastPageNode = try #require((firstAuthored["nodes"] as? [[String: Any]])?.first)
     lastPageNode["number"] = 3001
     lastPageNode["url"] = "https://github.com/acme/app-web/pull/3001"
@@ -218,13 +215,7 @@ struct GitHubClientTests {
 
   @Test func authoredPullRequestOnTwoPagesShowsOnce() async throws {
     let lastBody = try fixture("github-search.json")
-    var firstPage = try #require(try JSONSerialization.jsonObject(with: lastBody) as? [String: Any])
-    var firstData = try #require(firstPage["data"] as? [String: Any])
-    var firstAuthored = try #require(firstData["authored"] as? [String: Any])
-    firstAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": "cursor-1"]
-    firstData["authored"] = firstAuthored
-    firstPage["data"] = firstData
-    let firstBody = try JSONSerialization.data(withJSONObject: firstPage)
+    let firstBody = try authoredPage(lastBody, hasNextPage: true, endCursor: "cursor-1")
 
     let transport = StubTransport { request in
       let cursor = (try variables(in: request))["cursor"] as? String
@@ -244,14 +235,7 @@ struct GitHubClientTests {
   }
 
   @Test func pageWithMoreResultsButNoCursorFails() async throws {
-    var page = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
-    var pageData = try #require(page["data"] as? [String: Any])
-    var pageAuthored = try #require(pageData["authored"] as? [String: Any])
-    pageAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": NSNull()]
-    pageData["authored"] = pageAuthored
-    page["data"] = pageData
-    let body = try JSONSerialization.data(withJSONObject: page)
-
+    let body = try authoredPage(try fixture("github-search.json"), hasNextPage: true, endCursor: nil)
     let transport = StubTransport { _ in (body, 200) }
     await #expect(throws: SourceFailure.unexpected("GitHub search page has no cursor")) {
       try await client(transport: transport).fetch(now: now)
@@ -261,6 +245,13 @@ struct GitHubClientTests {
   @Test func summaryAuthenticationFailureWinsOverAuthoredFailure() async {
     let transport = StubTransport { request in
       (try variables(in: request))["requestedQuery"] != nil ? (Data(), 401) : (Data(), 502)
+    }
+    await #expect(throws: SourceFailure.authentication) { try await client(transport: transport).fetch(now: now) }
+  }
+
+  @Test func authoredAuthenticationFailureWinsOverSummaryFailure() async {
+    let transport = StubTransport { request in
+      (try variables(in: request))["requestedQuery"] != nil ? (Data(), 502) : (Data(), 401)
     }
     await #expect(throws: SourceFailure.authentication) { try await client(transport: transport).fetch(now: now) }
   }
