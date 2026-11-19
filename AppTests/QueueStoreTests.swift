@@ -546,7 +546,7 @@ private func cacheDirectoryWithFailedPipeline() throws -> URL {
     currentOrganizations = ["side-project"]
     await store.refresh()
     let requestVariables = try githubSearchVariables(in: transport)
-    #expect(requestVariables.count == 4)
+    try #require(requestVariables.count == 4)
     // The summary and the authored search of one refresh go out together, in either order.
     let firstRefresh = requestVariables[0..<2]
     let secondRefresh = requestVariables[2..<4]

@@ -94,7 +94,8 @@ public struct GitHubClient: Sendable {
       "mergedQuery": "is:pr author:@me merged:>=\(today)\(ownerQualifiers)",
       "recentlyMergedQuery": "is:pr author:@me is:merged merged:>=\(recentlyMergedSince) sort:updated-desc\(ownerQualifiers)",
     ]
-    // async let erases the typed error, so the summary comes back as a Result.
+    let authoredQuery = "is:pr is:open author:@me archived:false\(ownerQualifiers)"
+    // async let erases the typed error, so both requests come back as a Result.
     async let summaryResult: Result<SummaryResponse.Payload, SourceFailure> = {
       do throws(SourceFailure) {
         return .success(try await fetchSummary(token: token, variables: summaryVariables))
@@ -102,9 +103,17 @@ public struct GitHubClient: Sendable {
         return .failure(error)
       }
     }()
-    let authored = try await fetchAuthoredPullRequests(
-      token: token, query: "is:pr is:open author:@me archived:false\(ownerQualifiers)")
+    async let authoredResult: Result<[PullRequestNode?], SourceFailure> = {
+      do throws(SourceFailure) {
+        return .success(try await fetchAuthoredPullRequests(token: token, query: authoredQuery))
+      } catch {
+        return .failure(error)
+      }
+    }()
+    // The summary error comes first, so an authentication failure there is not hidden by a later page error.
+    // Throwing here cancels the authored pages that are still running.
     let summary = try await summaryResult.get()
+    let authored = try await authoredResult.get()
     // A search cursor does not lock the result set, so a PR can show on two pages.
     var seenURLs: Set<URL> = []
     return GitHubSnapshot(
@@ -137,7 +146,11 @@ public struct GitHubClient: Sendable {
         throw .unexpected(response.errors?.first?.message ?? "GitHub response has no data")
       }
       nodes += page.nodes
-      guard page.pageInfo.hasNextPage, let endCursor = page.pageInfo.endCursor else { break }
+      guard page.pageInfo.hasNextPage else { break }
+      // Stopping here would save a short list as if it were complete.
+      guard let endCursor = page.pageInfo.endCursor else {
+        throw .unexpected("GitHub search page has no cursor")
+      }
       cursor = endCursor
     }
     return nodes

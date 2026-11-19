@@ -23,6 +23,32 @@ private final class AttemptCounter: @unchecked Sendable {
   }
 }
 
+// Holds every request until the summary and an authored page have both started.
+private actor RequestRendezvous {
+  private var startedKinds: Set<String> = []
+  private var waitingRequests: [CheckedContinuation<Void, Never>] = []
+
+  func arrive(_ kind: String) async {
+    startedKinds.insert(kind)
+    if startedKinds.count == 2 {
+      waitingRequests.forEach { $0.resume() }
+      waitingRequests = []
+      return
+    }
+    await withCheckedContinuation { waitingRequests.append($0) }
+  }
+}
+
+private struct RendezvousTransport: HTTPTransport {
+  let body: Data
+  let rendezvous = RequestRendezvous()
+
+  func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    await rendezvous.arrive(try variables(in: request)["authoredQuery"] != nil ? "authored" : "summary")
+    return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+  }
+}
+
 private func client(token: Result<String, SourceFailure> = .success("secret-token"), transport: StubTransport) -> GitHubClient {
   GitHubClient(tokenProvider: StubTokenProvider(result: token), transport: transport)
 }
@@ -117,10 +143,13 @@ struct GitHubClientTests {
     firstPage["data"] = firstData
     let firstBody = try JSONSerialization.data(withJSONObject: firstPage)
 
+    var lastPageNode = try #require((firstAuthored["nodes"] as? [[String: Any]])?.first)
+    lastPageNode["number"] = 3001
+    lastPageNode["url"] = "https://github.com/acme/app-web/pull/3001"
     var lastPage = firstPage
     var lastData = try #require(lastPage["data"] as? [String: Any])
     lastData["authored"] = [
-      "nodes": [], "pageInfo": ["hasNextPage": false, "endCursor": NSNull()],
+      "nodes": [lastPageNode], "pageInfo": ["hasNextPage": false, "endCursor": NSNull()],
     ]
     lastPage["data"] = lastData
     let lastBody = try JSONSerialization.data(withJSONObject: lastPage)
@@ -130,7 +159,7 @@ struct GitHubClientTests {
       return (cursor == "cursor-1" ? lastBody : firstBody, 200)
     }
     let snapshot = try await client(transport: transport).fetch(now: now)
-    #expect(snapshot.authoredPullRequests.count == 2)
+    #expect(snapshot.authoredPullRequests.map(\.number) == [2184, 988, 3001])
     let authoredRequests = transport.requests.filter { request in
       ((try? variables(in: request))?["authoredQuery"] as? String) != nil
     }
@@ -178,20 +207,34 @@ struct GitHubClientTests {
     #expect(snapshot.authoredPullRequests.first?.number == 2184)
   }
 
-  @Test func summaryRunsNextToTheAuthoredPages() async throws {
-    let fixtureData = try fixture("github-search.json")
-    let authoredRequestSent = DispatchSemaphore(value: 0)
-    let transport = StubTransport { request in
-      if (try variables(in: request))["authoredQuery"] != nil {
-        authoredRequestSent.signal()
-      } else if authoredRequestSent.wait(timeout: .now() + 2) == .timedOut {
-        // The summary got no answer while the authored search waited for it.
-        return (Data(), 500)
-      }
-      return (fixtureData, 200)
-    }
-    let snapshot = try await client(transport: transport).fetch(now: now)
+  // A sequential fetch never answers its first request, so it hangs until the time limit.
+  @Test(.timeLimit(.minutes(1))) func summaryRunsNextToTheAuthoredPages() async throws {
+    let transport = RendezvousTransport(body: try fixture("github-search.json"))
+    let client = GitHubClient(tokenProvider: StubTokenProvider(result: .success("secret-token")), transport: transport)
+    let snapshot = try await client.fetch(now: now)
     #expect(snapshot.viewerLogin == "octo-me")
+  }
+
+  @Test func pageWithMoreResultsButNoCursorFails() async throws {
+    var page = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
+    var pageData = try #require(page["data"] as? [String: Any])
+    var pageAuthored = try #require(pageData["authored"] as? [String: Any])
+    pageAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": NSNull()]
+    pageData["authored"] = pageAuthored
+    page["data"] = pageData
+    let body = try JSONSerialization.data(withJSONObject: page)
+
+    let transport = StubTransport { _ in (body, 200) }
+    await #expect(throws: SourceFailure.unexpected("GitHub search page has no cursor")) {
+      try await client(transport: transport).fetch(now: now)
+    }
+  }
+
+  @Test func summaryAuthenticationFailureWinsOverAuthoredFailure() async {
+    let transport = StubTransport { request in
+      (try variables(in: request))["requestedQuery"] != nil ? (Data(), 401) : (Data(), 502)
+    }
+    await #expect(throws: SourceFailure.authentication) { try await client(transport: transport).fetch(now: now) }
   }
 
   @Test func badGatewayIsRetriedOnce() async throws {
