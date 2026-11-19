@@ -49,10 +49,8 @@ public func buildQueue(_ input: QueueInput, now: Date) -> [QueueSection] {
     }
   }
 
-  // The search also matches team requests, which stay after the viewer approves. A direct request always shows.
   let openReviewRequests = input.reviewRequests.filter {
-    ($0.requestedReviewerLogins.contains(input.viewerLogin) || $0.viewerLatestReviewState != .approved)
-      && !input.dismissedPullRequests.contains($0.dismissal)
+    isOpenReviewRequest($0, viewerLogin: input.viewerLogin) && !input.dismissedPullRequests.contains($0.dismissal)
   }
   for pullRequest in openReviewRequests where !pullRequest.authorIsBot {
     itemsByKind[.review, default: []].append(reviewItem(pullRequest, viewerLogin: input.viewerLogin, now: now))
@@ -102,6 +100,11 @@ public func buildQueue(_ input: QueueInput, now: Date) -> [QueueSection] {
     guard let items = itemsByKind[kind], !items.isEmpty else { return nil }
     return QueueSection(kind: kind, items: items.sorted { $0.sortDate < $1.sortDate })
   }
+}
+
+// The search also matches team requests, which stay after the viewer approves. A direct request always shows.
+func isOpenReviewRequest(_ pullRequest: PullRequest, viewerLogin: String) -> Bool {
+  pullRequest.requestedReviewerLogins.contains(viewerLogin) || pullRequest.viewerLatestReviewState != .approved
 }
 
 extension PullRequest {
