@@ -66,6 +66,11 @@ struct QueueRowView: View {
         }
       }
       .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row))
+      // On the row frame, not the moving content, so the pointer over Dismiss still counts as this row.
+      .onHover { isHovering in
+        isHovered = isHovering
+        hover(isHovering)
+      }
       .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: isSlid)
   }
 
@@ -147,10 +152,6 @@ struct QueueRowView: View {
     .frame(minHeight: Theme.Metrics.rowMinHeight)
     .background(rowFill, in: RoundedRectangle(cornerRadius: Theme.Radius.row))
     .contentShape(Rectangle())
-    .onHover { isHovering in
-      isHovered = isHovering
-      hover(isHovering)
-    }
     .onTapGesture(perform: open)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(rowAccessibilityLabel(for: item))

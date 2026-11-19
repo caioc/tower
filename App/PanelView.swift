@@ -19,6 +19,7 @@ struct PanelView: View {
   @FocusState private var isListFocused: Bool
   // The selected row that shows Dismiss. Only the selected row can slide, so one row at most shows it.
   @State private var slidItemId: String?
+  @State private var slidDismissal: Dismissal?
   @State private var hoveredItemId: String?
   @State private var scrollMonitor: Any?
   @State private var swipeDelta = CGSize.zero
@@ -40,6 +41,8 @@ struct PanelView: View {
             .background(OverlayScroller())
         }
         .frame(height: min(max(contentHeight, 1), max(scrollAreaMaxHeight - pinnedEdgeHeight, 1)))
+        // Rows move under a still pointer without a hover event, so a swipe waits for the next hover.
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, _ in hoveredItemId = nil }
         .overlay(alignment: .bottom) { undoBar }
         .onChange(of: selectedItemId) { _, newValue in
           if let newValue { proxy.scrollTo(newValue) }
@@ -67,9 +70,10 @@ struct PanelView: View {
     .onChange(of: selectedItemId) { _, newValue in
       if slidItemId != newValue { slidItemId = nil }
     }
-    // A refresh can remove the slid row. Clearing here keeps it closed if the row comes back.
-    .onChange(of: selectableItems.map(\.id)) { _, itemIds in
-      if let slidItemId, !itemIds.contains(slidItemId) { self.slidItemId = nil }
+    // A refresh can remove the slid row, or a rerun can keep its id with another dismissal or none.
+    // Clearing here keeps it closed if the row comes back.
+    .onChange(of: isSlidRowListed) { _, isListed in
+      if !isListed { slidItemId = nil }
     }
     .onChange(of: layout) { clearSelection() }
     .focusable()
@@ -226,7 +230,7 @@ struct PanelView: View {
       section: section, selectedItemId: selectedItemId, expandedItemIds: expandedItemIds, slidItemId: slidItemId,
       visibleItemLimit: visibleItemLimit, popoverItemId: $popoverItemId, open: activate, showDetails: showDetails,
       copyLink: { writeLink($0.url, to: .general) }, dismiss: dismiss, hover: trackHover,
-      handlePopoverInput: handle)
+      handlePopoverInput: handle, handlePopoverSlideKey: { handleSlide($0) ?? .ignored })
   }
 
   private var panelState: PanelContent {
@@ -346,7 +350,7 @@ struct PanelView: View {
       for: key, layoutDirection: layoutDirection, selectedItemIsDismissible: selectedItem?.dismissal != nil,
       isSlid: slidItemId != nil)
     switch outcome {
-    case .show: showSlide()
+    case .show: if let selectedItem { showSlide(on: selectedItem) }
     case .close: slidItemId = nil
     case .dismiss: if let selectedItem { dismiss(selectedItem) }
     case .stay: break
@@ -356,9 +360,16 @@ struct PanelView: View {
   }
 
   // The popover closes, so it does not cover the slid row.
-  private func showSlide() {
-    slidItemId = selectedItemId
+  private func showSlide(on item: QueueItem) {
+    selectedItemId = item.id
+    slidItemId = item.id
+    slidDismissal = item.dismissal
     popoverItemId = nil
+  }
+
+  private var isSlidRowListed: Bool {
+    guard let slidItemId else { return false }
+    return selectableItems.contains { $0.id == slidItemId && $0.dismissal == slidDismissal }
   }
 
   private func dismiss(_ item: QueueItem) {
@@ -394,9 +405,7 @@ struct PanelView: View {
       isDirectionInvertedFromDevice: isDirectionInvertedFromDevice, layoutDirection: layoutDirection,
       isDismissible: hoveredItem.dismissal != nil, isSlid: slidItemId == hoveredItem.id)
     switch outcome {
-    case .show:
-      selectedItemId = hoveredItem.id
-      showSlide()
+    case .show: showSlide(on: hoveredItem)
     case .close: slidItemId = nil
     case .dismiss, .stay, .passThrough: return false
     }
@@ -405,6 +414,7 @@ struct PanelView: View {
   }
 
   private func showDetails(_ item: QueueItem) {
+    slidItemId = nil
     selectedItemId = item.id
     popoverItemId = item.id
   }

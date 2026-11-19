@@ -15,6 +15,7 @@ struct QueueSectionView: View {
   let dismiss: (QueueItem) -> Void
   var hover: (QueueItem, Bool) -> Void = { _, _ in }
   let handlePopoverInput: (PanelInput) -> KeyPress.Result
+  var handlePopoverSlideKey: (SlideKey) -> KeyPress.Result = { _ in .ignored }
   @AccessibilityFocusState private var accessibilityFocusedItemId: String?
 
   var body: some View {
@@ -68,7 +69,8 @@ struct QueueSectionView: View {
       .popover(isPresented: isPopoverPresented(for: item), attachmentAnchor: .point(.leading), arrowEdge: .leading) {
         if let details = item.details {
           PullRequestPopoverView(
-            details: details, open: { open(item) }, copyLink: { copyLink(item) }, handleInput: handlePopoverInput)
+            details: details, open: { open(item) }, copyLink: { copyLink(item) }, handleInput: handlePopoverInput,
+            handleSlideKey: handlePopoverSlideKey)
         }
       }
   }
