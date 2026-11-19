@@ -184,6 +184,13 @@ struct RowAccessibilityLabelTests {
     #expect(rowAccessibilityLabel(for: pullRequest) == "Fix login, #12, app, ana · 2h, web, Review, status needs you")
   }
 
+  @Test func namesTheIssueTypeOfATidyRow() {
+    let ticket = QueueItem(
+      id: "jira:DEMO-1", title: "Fix login", tag: "DEMO-1", meta: "In Progress · 2d", url: URL(string: "https://e.com")!,
+      symbol: .bug, badge: Badge(text: "No PR", variant: .neutral), sortDate: now)
+    #expect(rowAccessibilityLabel(for: ticket) == "Fix login, DEMO-1, Bug, In Progress · 2d, No PR, status pending")
+  }
+
   @Test func skipsMissingParts() {
     #expect(rowAccessibilityLabel(for: item("a")) == "a, status pending")
   }

@@ -20,11 +20,26 @@ struct JiraClientTests {
     #expect(tickets == [
       JiraTicket(
         key: "PROJ-1432", summary: "Offline sync for trap counts", statusName: "In Progress",
-        updatedAt: isoDate("2027-01-12T09:00:00Z"), url: URL(string: "https://acme.atlassian.net/browse/PROJ-1432")!),
+        updatedAt: isoDate("2027-01-12T09:00:00Z"), url: URL(string: "https://acme.atlassian.net/browse/PROJ-1432")!,
+        issueTypeName: "Bug"),
       JiraTicket(
         key: "PROJ-1440", summary: "Export scouting report as PDF", statusName: "In Review",
         updatedAt: isoDate("2027-01-14T15:30:00Z"), url: URL(string: "https://acme.atlassian.net/browse/PROJ-1440")!),
     ])
+  }
+
+  @Test func ticketCachedWithoutIssueTypeDecodesWithNilType() throws {
+    let cachedTicket = Data(#"{"key":"PROJ-1","summary":"Old","statusName":"In Progress","updatedAt":0,"url":"https://acme.atlassian.net/browse/PROJ-1"}"#.utf8)
+    let ticket = try JSONDecoder().decode(JiraTicket.self, from: cachedTicket)
+    #expect(ticket.issueTypeName == nil)
+  }
+
+  @Test(arguments: [#""issuetype":null"#, #""issuetype":{"id":"10001"}"#])
+  func issueTypeWithoutNameDecodesWithNilType(issueTypeJSON: String) async throws {
+    let page = Data(#"{"issues":[{"key":"PROJ-1","fields":{"summary":"S","status":{"name":"In Progress"},"updated":"2027-01-12T09:00:00.000+0000",\#(issueTypeJSON)}}],"isLast":true}"#.utf8)
+    let tickets = try await JiraClient(settings: settings, transport: StubTransport { _ in (page, 200) }).fetch()
+    #expect(tickets.map(\.key) == ["PROJ-1"])
+    #expect(tickets.first?.issueTypeName == nil)
   }
 
   @Test func sendsJQLWithBasicAuth() async throws {
@@ -39,7 +54,7 @@ struct JiraClientTests {
     let bodyData = try #require(request.httpBody)
     let body = try #require(try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
     #expect(body["jql"] as? String == "assignee = currentUser() AND statusCategory = \"In Progress\" ORDER BY updated ASC")
-    #expect(body["fields"] as? [String] == ["summary", "status", "updated"])
+    #expect(body["fields"] as? [String] == ["summary", "status", "updated", "issuetype"])
     #expect(body["maxResults"] as? Int == 50)
   }
 

@@ -33,6 +33,11 @@ struct DemoScenarioTests {
     #expect(checks.contains(.running))
   }
 
+  @Test func typicalShowsMoreThanOneIssueTypeOnTidyRows() {
+    let tidyItems = demoSections(.typical).first { $0.kind == .tidy }?.items ?? []
+    #expect(Set(tidyItems.map(\.symbol)).count > 1)
+  }
+
   @Test func longListHasEnoughRowsToScroll() {
     #expect(rowCount(demoSections(.longList)) >= 30)
   }

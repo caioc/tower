@@ -67,7 +67,7 @@ struct QueueRowView: View {
         .font(.system(size: Theme.Metrics.symbolSize))
         .foregroundStyle(isSelected ? Theme.selectionText : symbolColor)
         .frame(width: Theme.Metrics.iconColumn)
-        // The badge text carries the meaning, so VoiceOver skips the glyph.
+        // The row label carries the meaning (badge text, Jira issue type), so VoiceOver skips the glyph.
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
         Text(item.title)
@@ -156,7 +156,8 @@ func rowSymbolVariant(for item: QueueItem) -> BadgeVariant {
 // VoiceOver reads the dot meaning, because color alone does not carry it.
 func rowAccessibilityLabel(for item: QueueItem) -> String {
   let parts = [
-    item.title, item.reference, item.tag, item.metaTail, item.metaTeam, item.strip?.accessibilityPhrase,
+    item.title, item.reference, item.tag, item.symbol.issueTypeSpokenName, item.metaTail, item.metaTeam,
+    item.strip?.accessibilityPhrase,
     rowStatusText(for: item)?.text,
   ]
   // Skips the phrase when the status text already names the dot, like "Draft · failing".

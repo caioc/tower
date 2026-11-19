@@ -152,9 +152,9 @@ private struct DemoFactory {
 
   var typicalTickets: [JiraTicket] {
     [
-      JiraTicket(key: "DEMO-41", summary: "Keyboard navigation", statusName: "In Progress", updatedAt: ago(hours: 5), url: URL(string: "https://demo.atlassian.net/browse/DEMO-41")!),
-      JiraTicket(key: "DEMO-45", summary: "Tidy settings layout", statusName: "In Progress", updatedAt: ago(hours: 48), url: URL(string: "https://demo.atlassian.net/browse/DEMO-45")!),
-      JiraTicket(key: "DEMO-38", summary: "Cache CircleCI pipelines", statusName: "In Progress", updatedAt: ago(hours: 5), url: URL(string: "https://demo.atlassian.net/browse/DEMO-38")!),
+      JiraTicket(key: "DEMO-41", summary: "Keyboard navigation", statusName: "In Progress", updatedAt: ago(hours: 5), url: URL(string: "https://demo.atlassian.net/browse/DEMO-41")!, issueTypeName: "Story"),
+      JiraTicket(key: "DEMO-45", summary: "Tidy settings layout", statusName: "In Progress", updatedAt: ago(hours: 48), url: URL(string: "https://demo.atlassian.net/browse/DEMO-45")!, issueTypeName: "Bug"),
+      JiraTicket(key: "DEMO-38", summary: "Cache CircleCI pipelines", statusName: "In Progress", updatedAt: ago(hours: 5), url: URL(string: "https://demo.atlassian.net/browse/DEMO-38")!, issueTypeName: "Task"),
     ]
   }
 

@@ -38,7 +38,7 @@ public struct JiraClient: Sendable {
     var issues: [SearchResponse.Issue] = []
     var nextPageToken: String?
     for _ in 0..<Self.maxPages {
-      var body: [String: Any] = ["jql": Self.jql, "fields": ["summary", "status", "updated"], "maxResults": Self.maxResults]
+      var body: [String: Any] = ["jql": Self.jql, "fields": ["summary", "status", "updated", "issuetype"], "maxResults": Self.maxResults]
       body["nextPageToken"] = nextPageToken
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
@@ -56,7 +56,8 @@ public struct JiraClient: Sendable {
     return issues.map { issue in
       JiraTicket(
         key: issue.key, summary: issue.fields.summary, statusName: issue.fields.status.name,
-        updatedAt: issue.fields.updated, url: settings.siteURL.appending(path: "browse/\(issue.key)"))
+        updatedAt: issue.fields.updated, url: settings.siteURL.appending(path: "browse/\(issue.key)"),
+        issueTypeName: issue.fields.issuetype?.name)
     }
   }
 
@@ -80,8 +81,11 @@ private struct SearchResponse: Decodable {
     var summary: String
     var status: Status
     var updated: Date
+    // Optional, so a ticket without a readable type still shows, with the fallback icon.
+    var issuetype: IssueType?
   }
   struct Status: Decodable { var name: String }
+  struct IssueType: Decodable { var name: String? }
 
   var issues: [Issue]
   var nextPageToken: String?
