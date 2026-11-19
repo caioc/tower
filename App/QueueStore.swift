@@ -104,6 +104,9 @@ struct UndoableDismissal: Equatable {
     // Settable inside the module so App tests can check that demo mode posts nothing.
     var demoScenario = DemoLaunch.scenario
   #endif
+  #if DEBUG
+    private var hasPostedDemoChanges = false
+  #endif
   private var activationObserver: NSObjectProtocol?
 
   init(
@@ -198,6 +201,7 @@ struct UndoableDismissal: Equatable {
     #if DEBUG
       if let demoScenario {
         applyDemo(demoScenario)
+        applyDemoChanges(demoScenario)
         return
       }
     #endif
@@ -345,6 +349,21 @@ struct UndoableDismissal: Equatable {
   }
 
   #if DEBUG
+    // The notify scenario shows its changed data from the first refresh on. Only that refresh posts.
+    private func applyDemoChanges(_ scenario: DemoScenario) {
+      guard let previousSnapshot = scenario.githubSnapshot, let changedSnapshot = scenario.changedGitHubSnapshot,
+        let previousPipelines = scenario.pipelines, let changedPipelines = scenario.changedPipelines
+      else { return }
+      if !hasPostedDemoChanges {
+        hasPostedDemoChanges = true
+        post(notificationEvents(previous: previousSnapshot, current: changedSnapshot, dismissedPullRequests: dismissedPullRequests))
+        post(notificationEvents(previous: previousPipelines, current: changedPipelines, dismissedPipelines: dismissedPipelines))
+      }
+      githubSnapshot = changedSnapshot
+      pipelines = changedPipelines
+      rebuild()
+    }
+
     // Demo data never touches the cache, the network or saved dismissals.
     private func applyDemo(_ scenario: DemoScenario) {
       let now = Date()

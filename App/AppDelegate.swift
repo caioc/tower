@@ -3,9 +3,10 @@ import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
   let store = QueueStore(notifier: AppDelegate.notifier)
-  // Hosted unit tests and demo mode get no notifier, so they never post or ask for permission.
+  // Hosted unit tests and demo mode (except notify) get no notifier, so they never post or ask for permission.
   private static let notifier: UserNotificationNotifier? =
-    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil && !DemoLaunch.isActive
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+      && (!DemoLaunch.isActive || DemoLaunch.postsNotifications)
     ? UserNotificationNotifier() : nil
   // Settings opens on the last tab for the app run, so the window builds each time from this value.
   private var settingsTab = SettingsTab.general

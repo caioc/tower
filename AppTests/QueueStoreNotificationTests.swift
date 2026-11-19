@@ -230,6 +230,20 @@ private final class SettingsBox: @unchecked Sendable {
     #expect(!store.sections.isEmpty)
     #expect(notifier.postedEvents.isEmpty)
   }
+
+  @Test func notifyDemoPostsEachKindOnceOnTheFirstRefresh() async throws {
+    let notifier = FakeNotifier()
+    let store = makeStore(transport: githubTransport(GitHubResponse(body: try githubData(approvals: 0))), notifier: notifier)
+    store.demoScenario = DemoScenario(name: .notify, now: .now)
+    store.start()
+    #expect(notifier.postedEvents.isEmpty)
+    await store.refresh()
+    #expect(notifier.postedEvents.map(\.kind).sorted { $0.rawValue < $1.rawValue }
+      == NotificationEventKind.allCases.sorted { $0.rawValue < $1.rawValue })
+    #expect(store.pipelines?.contains { $0.number == 1204 && $0.state == .onHold } == true)
+    await store.refresh()
+    #expect(notifier.postedEvents.count == NotificationEventKind.allCases.count)
+  }
 }
 
 struct NotificationSettingsKeysTests {

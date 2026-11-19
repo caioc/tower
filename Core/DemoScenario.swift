@@ -10,6 +10,7 @@ public struct DemoScenario: Sendable {
     case clearSkies = "clear-skies"
     case offline
     case authFailure = "auth-failure"
+    case notify
 
     // An unknown or empty value gives typical.
     public init(launchValue: String) {
@@ -26,12 +27,15 @@ public struct DemoScenario: Sendable {
   public let githubStatus: SourceStatus
   public let jiraStatus: SourceStatus
   public let circleciStatus: SourceStatus
+  // The data the first refresh changes to. Only notify has it, so a refresh posts one notification of each kind.
+  public let changedGitHubSnapshot: GitHubSnapshot?
+  public let changedPipelines: [Pipeline]?
 
   public init(name: Name, now: Date) {
     self.name = name
     let factory = DemoFactory(now: now)
     switch name {
-    case .typical, .authFailure:
+    case .typical, .authFailure, .notify:
       githubSnapshot = factory.snapshot(authored: factory.typicalAuthored, reviews: factory.typicalReviews)
       jiraTickets = factory.typicalTickets
       pipelines = factory.typicalPipelines
@@ -58,10 +62,18 @@ public struct DemoScenario: Sendable {
       githubStatus = .failed(.authentication)
       jiraStatus = .ok
       circleciStatus = .ok
-    case .typical, .longList, .clearSkies:
+    case .typical, .longList, .clearSkies, .notify:
       githubStatus = .ok
       jiraStatus = .ok
       circleciStatus = .ok
+    }
+    if name == .notify {
+      changedGitHubSnapshot = factory.snapshot(
+        authored: factory.notifyChangedAuthored, reviews: factory.typicalReviews + [factory.notifyNewReview])
+      changedPipelines = factory.notifyChangedPipelines
+    } else {
+      changedGitHubSnapshot = nil
+      changedPipelines = nil
     }
   }
 
@@ -164,6 +176,39 @@ private struct DemoFactory {
       pipeline("demo-org/tower", 881, ref: "release", state: .onHold, hoursAgo: 0.2),
       pipeline("demo-org/api", 1204, ref: "feat/today-summary", state: .running, hoursAgo: 0.05),
     ]
+  }
+
+  // Typical data after one refresh: api#412 gets an approval, web#221 fails, infra#91 passes.
+  var notifyChangedAuthored: [PullRequest] {
+    typicalAuthored.map { pullRequest in
+      var changedPullRequest = pullRequest
+      switch (pullRequest.repository, pullRequest.number) {
+      case ("demo-org/api", 412): changedPullRequest.approvalCount += 1
+      case ("demo-org/web", 221):
+        changedPullRequest.checkState = .failure
+        changedPullRequest.failedCheckCount = 1
+      case ("demo-org/infra", 91): changedPullRequest.checkState = .success
+      default: break
+      }
+      return changedPullRequest
+    }
+  }
+
+  var notifyNewReview: PullRequest {
+    var newReview = pullRequest(
+      "demo-org/web", 330, "Show notifications for CI results", author: "dana", hoursAgo: 0,
+      reviewers: [DemoScenario.viewerLogin])
+    newReview.viewerReviewRequestedAt = newReview.reviewRequestedAt
+    return newReview
+  }
+
+  // api#1204 stops at an approval job.
+  var notifyChangedPipelines: [Pipeline] {
+    typicalPipelines.map { pipeline in
+      var changedPipeline = pipeline
+      if pipeline.number == 1204 { changedPipeline.state = .onHold }
+      return changedPipeline
+    }
   }
 
   func pipeline(_ project: String, _ number: Int, ref: String, state: PipelineState, hoursAgo: Double) -> Pipeline {

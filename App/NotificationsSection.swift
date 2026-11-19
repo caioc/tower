@@ -11,7 +11,7 @@ struct NotificationsSection: View {
       ForEach(NotificationEventKind.allCases, id: \.self) { kind in
         NotificationKindToggle(kind: kind) {
           // Launch asks only when a switch is on, so a switch turned on later asks here. macOS prompts at most once.
-          guard !DemoLaunch.isActive else { return }
+          guard !DemoLaunch.isActive || DemoLaunch.postsNotifications else { return }
           Task {
             _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert])
             await refreshAuthorization()
