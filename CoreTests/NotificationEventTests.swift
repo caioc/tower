@@ -23,7 +23,8 @@ private func pullRequest(
     failedCheckCount: checkState == .failure ? 1 : 0, additions: 0, deletions: 0,
     requestedReviewerLogins: requestedReviewerLogins, requestedTeamSlugs: requestedTeamSlugs, reviewCount: 0,
     reviewRequestedAt: reviewRequestedAt, approvalCount: approvalCount, requiredApprovalCount: 2,
-    viewerLatestReviewState: viewerLatestReviewState, headCommitId: headCommitId)
+    viewerLatestReviewState: viewerLatestReviewState, headCommitId: headCommitId,
+    viewerReviewRequestedAt: reviewRequestedAt)
 }
 
 private func snapshot(authored: [PullRequest] = [], reviewRequests: [PullRequest] = []) -> GitHubSnapshot {
@@ -199,6 +200,22 @@ struct ReviewRequestEventTests {
     #expect(events.isEmpty)
   }
 
+  @Test func earlierRequestTimeAfterADirectRequestGoesAwayGivesNoEvent() {
+    let events = githubEvents(
+      previous: snapshot(reviewRequests: [pullRequest(reviewRequestedAt: requestTime.addingTimeInterval(60))]),
+      current: snapshot(reviewRequests: [pullRequest(reviewRequestedAt: requestTime)]))
+    #expect(events.isEmpty)
+  }
+
+  @Test func viewerRequestOutsideTheFetchedWindowGivesNoEvent() {
+    var requestOutsideWindow = pullRequest()
+    requestOutsideWindow.viewerReviewRequestedAt = nil
+    requestOutsideWindow.reviewRequestedAt = requestTime.addingTimeInterval(60)
+    let events = githubEvents(
+      previous: snapshot(reviewRequests: [pullRequest()]), current: snapshot(reviewRequests: [requestOutsideWindow]))
+    #expect(events.isEmpty)
+  }
+
   @Test func dismissedReviewRequestGivesNoEvent() {
     let request = pullRequest()
     let events = githubEvents(
@@ -243,6 +260,17 @@ struct PipelineEventTests {
       previous: [pipeline(state: .failed, newestWorkflowId: "build-1", failedWorkflowIds: ["build-1"])],
       current: [pipeline(state: .failed, newestWorkflowId: "build-2", failedWorkflowIds: ["build-2"])])
     #expect(events.map(\.id) == ["ciFailed:pipeline:pipeline-1842:build-2"])
+  }
+
+  @Test func workflowsThatFailOnDifferentRefreshesGetDifferentIds() {
+    let firstFailure = pipelineEvents(
+      previous: [pipeline(state: .running, newestWorkflowId: "deploy-1")],
+      current: [pipeline(state: .failed, newestWorkflowId: "deploy-1", failedWorkflowIds: ["build-1"])])
+    let secondFailure = pipelineEvents(
+      previous: [pipeline(state: .failed, newestWorkflowId: "deploy-1", failedWorkflowIds: ["build-1"])],
+      current: [pipeline(state: .failed, newestWorkflowId: "deploy-1", failedWorkflowIds: ["build-1", "deploy-1"])])
+    #expect(firstFailure.map(\.id) == ["ciFailed:pipeline:pipeline-1842:build-1"])
+    #expect(secondFailure.map(\.id) == ["ciFailed:pipeline:pipeline-1842:deploy-1"])
   }
 
   @Test func rerunOfAnotherWorkflowWhileOneStaysFailedGivesNoEvent() {

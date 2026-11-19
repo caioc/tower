@@ -53,13 +53,22 @@ public func notificationEvents(
     }
   }
   // Every previous request counts, so a stale approval that reopens an old request posts nothing.
-  let previousRequests = Set(previous.reviewRequests.map(\.reviewRequestKey))
+  let previousRequestTimes = Dictionary(previous.reviewRequests.map { ($0.url, $0.viewerReviewRequestedAt) }) { first, _ in
+    first
+  }
   for pullRequest in current.reviewRequests
   where isOpenReviewRequest(pullRequest, viewerLogin: current.viewerLogin)
-    && !previousRequests.contains(pullRequest.reviewRequestKey)
     && !dismissedPullRequests.contains(pullRequest.dismissal)
   {
-    events.append(pullRequest.event(.reviewRequested, state: pullRequest.reviewRequestTime))
+    // On a known PR only a later request to the viewer counts. An earlier or missing time comes from a removed
+    // request or from an event outside the fetched window, not from a new request.
+    if let previousTime = previousRequestTimes[pullRequest.url] {
+      guard let previousTime, let currentTime = pullRequest.viewerReviewRequestedAt, currentTime > previousTime else {
+        continue
+      }
+    }
+    let requestTime = pullRequest.viewerReviewRequestedAt ?? pullRequest.reviewRequestedAt
+    events.append(pullRequest.event(.reviewRequested, state: requestTime.map { "\($0.timeIntervalSince1970)" } ?? ""))
   }
   return events
 }
@@ -75,9 +84,11 @@ public func notificationEvents(
     let previousPipeline = previousById[pipeline.id]
     let previousState = previousPipeline?.state ?? .running
     // A rerun that fails again between two refreshes stays failed, so a newly failed workflow counts as a change.
-    let failedWorkflowIds = Set(pipeline.failedWorkflowIds ?? [])
-    let hasNewFailure = !failedWorkflowIds.subtracting(previousPipeline?.failedWorkflowIds ?? []).isEmpty
-    guard pipeline.state != previousState || (pipeline.state == .failed && hasNewFailure) else { return nil }
+    let newlyFailedWorkflowIds = Set(pipeline.failedWorkflowIds ?? [])
+      .subtracting(previousPipeline?.failedWorkflowIds ?? []).sorted()
+    guard pipeline.state != previousState || (pipeline.state == .failed && !newlyFailedWorkflowIds.isEmpty) else {
+      return nil
+    }
     let kind: NotificationEventKind
     switch pipeline.state {
     case .failed: kind = .ciFailed
@@ -86,20 +97,17 @@ public func notificationEvents(
     case .running, .canceled: return nil
     }
     let repository = pipeline.projectSlug.split(separator: "/").last.map(String.init) ?? pipeline.projectSlug
+    // Two workflows that fail on different refreshes get different ids, so the second does not replace the first.
+    let state =
+      kind == .ciFailed && !newlyFailedWorkflowIds.isEmpty
+      ? newlyFailedWorkflowIds.joined(separator: ",") : pipeline.newestWorkflowId ?? ""
     return NotificationEvent(
-      kind: kind, id: "\(kind.rawValue):pipeline:\(pipeline.id):\(pipeline.newestWorkflowId ?? "")",
+      kind: kind, id: "\(kind.rawValue):pipeline:\(pipeline.id):\(state)",
       body: "\(pipeline.ref)\n\(repository) #\(pipeline.number)", url: pipeline.url)
   }
 }
 
 extension PullRequest {
-  // Holds the request time, so a new request on the same PR gives a new key. A new commit does not.
-  fileprivate var reviewRequestKey: String { "\(url.absoluteString):\(reviewRequestTime)" }
-
-  fileprivate var reviewRequestTime: String {
-    (viewerReviewRequestedAt ?? reviewRequestedAt).map { "\($0.timeIntervalSince1970)" } ?? ""
-  }
-
   fileprivate func event(_ kind: NotificationEventKind, state: String) -> NotificationEvent {
     NotificationEvent(
       kind: kind, id: "\(kind.rawValue):\(url.absoluteString):\(state)", body: "\(title)\n\(repository) #\(number)", url: url)
