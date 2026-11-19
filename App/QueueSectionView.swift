@@ -5,6 +5,7 @@ struct QueueSectionView: View {
   let section: QueueSection
   let selectedItemId: String?
   var expandedItemIds: Set<String> = []
+  var slidItemId: String?
   // The pinned Watch section shows only the first rows, then a "+N more" line.
   var visibleItemLimit = Int.max
   @Binding var popoverItemId: String?
@@ -12,6 +13,7 @@ struct QueueSectionView: View {
   let showDetails: (QueueItem) -> Void
   let copyLink: (QueueItem) -> Void
   let dismiss: (QueueItem) -> Void
+  var hover: (QueueItem, Bool) -> Void = { _, _ in }
   let handlePopoverInput: (PanelInput) -> KeyPress.Result
   @AccessibilityFocusState private var accessibilityFocusedItemId: String?
 
@@ -59,7 +61,7 @@ struct QueueSectionView: View {
     QueueRowView(
       item: item, isSelected: item.id == selectedItemId, isExpanded: expandedItemIds.contains(item.id),
       open: { open(item) }, showDetails: { showDetails(item) }, copyLink: { copyLink(item) },
-      dismiss: { dismiss(item) })
+      dismiss: { dismiss(item) }, isSlid: item.id == slidItemId, hover: { hover(item, $0) })
       .id(item.id)
       .accessibilityFocused($accessibilityFocusedItemId, equals: item.id)
       // The leading point puts the arrow at the vertical middle of the row, with the popover left of the panel.

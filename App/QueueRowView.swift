@@ -9,7 +9,10 @@ struct QueueRowView: View {
   let showDetails: () -> Void
   let copyLink: () -> Void
   let dismiss: () -> Void
+  var isSlid = false
+  var hover: (Bool) -> Void = { _ in }
   @State private var isHovered = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   // PR rows and failed pipeline rows get a context menu; other rows keep their single action.
   // Review request rows and failed pipeline rows also get Dismiss.
@@ -52,7 +55,37 @@ struct QueueRowView: View {
 
   private var isGroup: Bool { !item.children.isEmpty }
 
+  // The slid row moves toward the leading edge and shows Dismiss behind it, like Mail.
+  // SwiftUI mirrors the offset in right-to-left, so the row slides right there.
   private var row: some View {
+    rowContent
+      .offset(x: isSlid ? -Theme.Metrics.dismissActionWidth : 0)
+      .background(alignment: .trailing) {
+        if isSlid {
+          dismissAction
+        }
+      }
+      .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row))
+      .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: isSlid)
+  }
+
+  private var dismissAction: some View {
+    Button(action: dismiss) {
+      HStack(spacing: Theme.Spacing.xs) {
+        Image(PanelSymbol.trash.rawValue).accessibilityHidden(true)
+        Text("Dismiss")
+      }
+      .font(Theme.Fonts.badge)
+      .foregroundStyle(.white)
+      .frame(width: Theme.Metrics.dismissActionWidth)
+      .frame(maxHeight: .infinity)
+      .background(Theme.dismissFill)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var rowContent: some View {
     HStack(spacing: Theme.Spacing.s) {
       if isGroup {
         Image(PanelSymbol.disclosure.rawValue)
@@ -114,7 +147,10 @@ struct QueueRowView: View {
     .frame(minHeight: Theme.Metrics.rowMinHeight)
     .background(rowFill, in: RoundedRectangle(cornerRadius: Theme.Radius.row))
     .contentShape(Rectangle())
-    .onHover { isHovered = $0 }
+    .onHover { isHovering in
+      isHovered = isHovering
+      hover(isHovering)
+    }
     .onTapGesture(perform: open)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(rowAccessibilityLabel(for: item))
