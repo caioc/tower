@@ -197,6 +197,54 @@ struct GitHubClientTests {
     #expect(snapshot.authoredPullRequests.count == 2)
   }
 
+  // Puts the given reviewers and request events on the first review request of the fixture.
+  private func firstReviewRequest(
+    reviewers: [[String: String]], requestEvents: [(createdAt: String, reviewer: [String: String])],
+    leadingNullEvent: Bool = false
+  ) async throws -> PullRequest? {
+    var response = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
+    var data = try #require(response["data"] as? [String: Any])
+    var requested = try #require(data["requested"] as? [String: Any])
+    var nodes = try #require(requested["nodes"] as? [[String: Any]])
+    nodes[0]["reviewRequests"] = ["nodes": reviewers.map { ["requestedReviewer": $0] }]
+    let eventNodes: [Any] = requestEvents.map { ["createdAt": $0.createdAt, "requestedReviewer": $0.reviewer] }
+    nodes[0]["timelineItems"] = ["nodes": (leadingNullEvent ? [NSNull()] : []) + eventNodes]
+    requested["nodes"] = nodes
+    data["requested"] = requested
+    response["data"] = data
+    let body = try JSONSerialization.data(withJSONObject: response)
+    return try await client(transport: StubTransport { _ in (body, 200) }).fetch(now: now).reviewRequests.first
+  }
+
+  @Test func viewerRequestTimeIgnoresALaterRequestToSomeoneElse() async throws {
+    let pullRequest = try await firstReviewRequest(
+      reviewers: [["login": "octo-me"], ["login": "someone-else"]],
+      requestEvents: [("2027-01-14T09:00:00Z", ["login": "octo-me"]), ("2027-01-14T11:00:00Z", ["login": "someone-else"])])
+    #expect(pullRequest?.viewerReviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
+    #expect(pullRequest?.reviewRequestedAt == isoDate("2027-01-14T11:00:00Z"))
+  }
+
+  @Test func nullRequestEventIsSkipped() async throws {
+    let pullRequest = try await firstReviewRequest(
+      reviewers: [["login": "octo-me"]], requestEvents: [("2027-01-14T09:00:00Z", ["login": "octo-me"])],
+      leadingNullEvent: true)
+    #expect(pullRequest?.viewerReviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
+  }
+
+  @Test func directRequestIgnoresALaterRequestToATeam() async throws {
+    let pullRequest = try await firstReviewRequest(
+      reviewers: [["login": "octo-me"], ["slug": "design"]],
+      requestEvents: [("2027-01-14T09:00:00Z", ["login": "octo-me"]), ("2027-01-14T11:00:00Z", ["slug": "design"])])
+    #expect(pullRequest?.viewerReviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
+  }
+
+  @Test func teamOnlyRequestUsesTheNewestRequestedTeam() async throws {
+    let pullRequest = try await firstReviewRequest(
+      reviewers: [["slug": "web"]],
+      requestEvents: [("2027-01-14T09:00:00Z", ["slug": "web"]), ("2027-01-14T11:00:00Z", ["login": "someone-else"])])
+    #expect(pullRequest?.viewerReviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
+  }
+
   @Test func nullSearchNodeWithErrorsKeepsTheOtherPullRequests() async throws {
     var response = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
     var data = try #require(response["data"] as? [String: Any])

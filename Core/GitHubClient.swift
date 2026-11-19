@@ -110,8 +110,8 @@ public struct GitHubClient: Sendable {
     }
     return GitHubSnapshot(
       viewerLogin: payload.viewer.login,
-      authoredPullRequests: payload.authored.nodes.compactMap { $0?.pullRequest },
-      reviewRequests: payload.requested.nodes.compactMap { $0?.pullRequest },
+      authoredPullRequests: payload.authored.nodes.compactMap { $0?.pullRequest(viewerLogin: payload.viewer.login) },
+      reviewRequests: payload.requested.nodes.compactMap { $0?.pullRequest(viewerLogin: payload.viewer.login) },
       reviewsSubmittedToday: payload.reviewed.issueCount,
       mergedToday: payload.merged.issueCount,
       recentlyMergedPullRequests: (payload.recentlyMerged?.nodes ?? []).compactMap { $0?.mergedPullRequest })
@@ -161,7 +161,8 @@ private let searchQuery = """
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
     reviews(first: 1) { totalCount }
     viewerLatestReview { state }
-    timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 1) { nodes { ... on ReviewRequestedEvent { createdAt } } }
+    timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 25) { nodes { ... on ReviewRequestedEvent {
+      createdAt requestedReviewer { ... on User { login } ... on Team { slug } } } } }
   }
   fragment AuthoredPullRequestFields on PullRequest {
     ...PullRequestFields
@@ -237,8 +238,12 @@ private struct PullRequestNode: Decodable {
     var slug: String?
   }
   struct TotalCount: Decodable { var totalCount: Int }
-  struct Timeline: Decodable { var nodes: [TimelineEvent] }
-  struct TimelineEvent: Decodable { var createdAt: Date? }
+  // GitHub can return a null event, for example one the token cannot read.
+  struct Timeline: Decodable { var nodes: [TimelineEvent?] }
+  struct TimelineEvent: Decodable {
+    var createdAt: Date?
+    var requestedReviewer: Reviewer?
+  }
   struct BaseRef: Decodable { var rules: Rules? }
   struct Rules: Decodable { var nodes: [Rule] }
   struct Rule: Decodable { var parameters: RuleParameters? }
@@ -274,7 +279,7 @@ private struct PullRequestNode: Decodable {
   var latestOpinionatedReviews: Reviews?
   var reviewThreads: Threads?
 
-  var pullRequest: PullRequest? {
+  func pullRequest(viewerLogin: String) -> PullRequest? {
     guard let number, let title, let url, let updatedAt, let repository else { return nil }
     let rollup = commits?.nodes.last?.commit.statusCheckRollup
     let failedCheckRuns = (rollup?.contexts.checkRunCountsByState ?? [])
@@ -282,6 +287,14 @@ private struct PullRequestNode: Decodable {
     let failedStatusContexts = (rollup?.contexts.statusContextCountsByState ?? [])
       .filter { GitHubClient.isFailedStatusContextState($0.state) }.reduce(0) { $0 + $1.count }
     let reviewers = reviewRequests?.nodes.compactMap(\.requestedReviewer) ?? []
+    let requestEvents = (timelineItems?.nodes ?? []).compactMap(\.self)
+    // Tower does not know the viewer's teams, so a team-only request matches any requested team.
+    let isDirectRequest = reviewers.contains { $0.login == viewerLogin }
+    let viewerRequestEvent = requestEvents.last { event in
+      isDirectRequest
+        ? event.requestedReviewer?.login == viewerLogin
+        : event.requestedReviewer?.slug.map { reviewers.compactMap(\.slug).contains($0) } == true
+    }
     let requiredApprovalCounts = baseRef?.rules?.nodes.compactMap { $0.parameters?.requiredApprovingReviewCount } ?? []
     return PullRequest(
       repository: repository.name, number: number, title: title, url: url,
@@ -291,12 +304,13 @@ private struct PullRequestNode: Decodable {
       failedCheckCount: failedCheckRuns + failedStatusContexts,
       additions: additions ?? 0, deletions: deletions ?? 0,
       requestedReviewerLogins: reviewers.compactMap(\.login), requestedTeamSlugs: reviewers.compactMap(\.slug),
-      reviewCount: reviews?.totalCount ?? 0, reviewRequestedAt: timelineItems?.nodes.last?.createdAt,
+      reviewCount: reviews?.totalCount ?? 0, reviewRequestedAt: requestEvents.last?.createdAt,
       unresolvedThreadCount: reviewThreads?.nodes.filter { !$0.isResolved }.count ?? 0,
       hasMoreThreadsThanFetched: (reviewThreads?.totalCount ?? 0) > reviewThreadPageSize,
       approvalCount: latestOpinionatedReviews?.nodes.filter { $0.state == "APPROVED" }.count ?? 0,
       requiredApprovalCount: requiredApprovalCounts.max() ?? 1,
-      viewerLatestReviewState: viewerLatestReview.flatMap { ReviewState(rawValue: $0.state) }, headCommitId: headRefOid)
+      viewerLatestReviewState: viewerLatestReview.flatMap { ReviewState(rawValue: $0.state) }, headCommitId: headRefOid,
+      viewerReviewRequestedAt: viewerRequestEvent?.createdAt)
   }
 }
 

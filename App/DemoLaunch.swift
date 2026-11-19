@@ -18,9 +18,12 @@ enum DemoLaunch {
 
   // Settings tests and Reconnect use real credentials, so demo mode turns them off.
   static let isActive = scenario != nil
+  // Only the notify scenario posts real notifications, so it can test the banner and its click.
+  static let postsNotifications = scenario?.name == .notify
 }
 #else
 enum DemoLaunch {
   static let isActive = false
+  static let postsNotifications = false
 }
 #endif

@@ -92,10 +92,20 @@ struct UndoableDismissal: Equatable {
   private let loadJiraSettings: () -> JiraSettings?
   private let loadCircleCISettings: () -> CircleCISettings?
   private let loadGitHubOrganizations: () -> [String]
+  private let notifier: (any Notifier)?
+  private let loadEnabledNotificationKinds: () -> Set<NotificationEventKind>
+  // Set only by a successful fetch in this app run, never by the cache, so launch does not post old changes.
+  // Each baseline keeps the settings it was fetched with. New settings start a new baseline that posts nothing.
+  private var githubNotificationBaseline: (snapshot: GitHubSnapshot, organizations: [String])?
+  private var circleciNotificationBaseline: (pipelines: [Pipeline], settings: CircleCISettings?)?
   private let defaults: UserDefaults
   private var pollingTask: Task<Void, Never>?
   #if DEBUG
-    private let demoScenario = DemoLaunch.scenario
+    // Settable inside the module so App tests can check that demo mode posts nothing.
+    var demoScenario = DemoLaunch.scenario
+  #endif
+  #if DEBUG
+    private var hasPostedDemoChanges = false
   #endif
   private var activationObserver: NSObjectProtocol?
 
@@ -106,6 +116,8 @@ struct UndoableDismissal: Equatable {
     loadJiraSettings: @escaping () -> JiraSettings? = { JiraSettingsKeys.load() },
     loadCircleCISettings: @escaping () -> CircleCISettings? = { CircleCISettingsKeys.load() },
     loadGitHubOrganizations: @escaping () -> [String] = { GitHubSettingsKeys.loadOrganizations() },
+    notifier: (any Notifier)? = nil,
+    loadEnabledNotificationKinds: @escaping () -> Set<NotificationEventKind> = { NotificationSettingsKeys.enabledKinds() },
     defaults: UserDefaults = .standard,
     undoDuration: Duration = .seconds(5)
   ) {
@@ -115,6 +127,8 @@ struct UndoableDismissal: Equatable {
     self.loadJiraSettings = loadJiraSettings
     self.loadCircleCISettings = loadCircleCISettings
     self.loadGitHubOrganizations = loadGitHubOrganizations
+    self.notifier = notifier
+    self.loadEnabledNotificationKinds = loadEnabledNotificationKinds
     self.defaults = defaults
     self.undoDuration = undoDuration
     dismissedPipelines = DismissalKeys.load(DismissalKeys.dismissedPipelines, defaults: defaults)
@@ -187,6 +201,7 @@ struct UndoableDismissal: Equatable {
     #if DEBUG
       if let demoScenario {
         applyDemo(demoScenario)
+        applyDemoChanges(demoScenario)
         return
       }
     #endif
@@ -194,9 +209,11 @@ struct UndoableDismissal: Equatable {
     isRefreshing = true
     defer { isRefreshing = false }
     let now = Date()
-    let githubClient = GitHubClient(tokenProvider: tokenProvider, transport: transport, owners: loadGitHubOrganizations())
+    let githubOrganizations = loadGitHubOrganizations()
+    let circleciSettings = loadCircleCISettings()
+    let githubClient = GitHubClient(tokenProvider: tokenProvider, transport: transport, owners: githubOrganizations)
     let jiraClient = JiraClient(settings: loadJiraSettings(), transport: transport)
-    let circleciClient = CircleCIClient(settings: loadCircleCISettings(), transport: transport)
+    let circleciClient = CircleCIClient(settings: circleciSettings, transport: transport)
     async let githubResult = Result { () async throws(SourceFailure) -> GitHubSnapshot in try await githubClient.fetch(now: now) }
     async let jiraResult = Result { () async throws(SourceFailure) -> [JiraTicket] in try await jiraClient.fetch() }
     async let circleciResult = Result { () async throws(SourceFailure) -> [Pipeline] in try await circleciClient.fetch(now: now) }
@@ -212,6 +229,14 @@ struct UndoableDismissal: Equatable {
       if keptPullRequestDismissals != dismissedPullRequests {
         dismissedPullRequests = keptPullRequestDismissals
         DismissalKeys.save(keptPullRequestDismissals, key: DismissalKeys.dismissedPullRequests, defaults: defaults)
+      }
+      if let baseline = githubNotificationBaseline, baseline.organizations == githubOrganizations,
+        baseline.snapshot.viewerLogin == snapshot.viewerLogin
+      {
+        post(notificationEvents(previous: baseline.snapshot, current: snapshot, dismissedPullRequests: dismissedPullRequests))
+        githubNotificationBaseline = (keepingMissingPullRequests(of: baseline.snapshot, in: snapshot), githubOrganizations)
+      } else {
+        githubNotificationBaseline = (snapshot, githubOrganizations)
       }
     case .failure(let failure):
       githubStatus = .failed(failure)
@@ -242,14 +267,39 @@ struct UndoableDismissal: Equatable {
         dismissedPipelines = keptDismissals
         DismissalKeys.save(keptDismissals, key: DismissalKeys.dismissedPipelines, defaults: defaults)
       }
+      // The token picks the account whose pipelines "mine" returns, so a new token is a new baseline too.
+      if let baseline = circleciNotificationBaseline, baseline.settings == circleciSettings {
+        post(notificationEvents(previous: baseline.pipelines, current: fetchedPipelines, dismissedPipelines: dismissedPipelines))
+      }
+      circleciNotificationBaseline = (fetchedPipelines, circleciSettings)
     case .failure(let failure):
       circleciStatus = .failed(failure)
       if failure == .notConfigured {
         pipelines = nil
         circleciFetchedAt = nil
+        // A later setup starts a new baseline, so its first fetch posts nothing.
+        circleciNotificationBaseline = nil
       }
     }
     rebuild()
+  }
+
+  // GraphQL can drop a PR from one response with an error. Its last known state stays, so its return posts nothing.
+  private func keepingMissingPullRequests(of previous: GitHubSnapshot, in current: GitHubSnapshot) -> GitHubSnapshot {
+    var baseline = current
+    let authoredURLs = Set(current.authoredPullRequests.map(\.url))
+    baseline.authoredPullRequests += previous.authoredPullRequests.filter { !authoredURLs.contains($0.url) }
+    let requestedURLs = Set(current.reviewRequests.map(\.url))
+    baseline.reviewRequests += previous.reviewRequests.filter { !requestedURLs.contains($0.url) }
+    return baseline
+  }
+
+  private func post(_ events: [NotificationEvent]) {
+    guard let notifier, !events.isEmpty else { return }
+    let enabledKinds = loadEnabledNotificationKinds()
+    for event in events where enabledKinds.contains(event.kind) {
+      notifier.post(event)
+    }
   }
 
   func dismiss(_ item: QueueItem) {
@@ -299,6 +349,21 @@ struct UndoableDismissal: Equatable {
   }
 
   #if DEBUG
+    // The notify scenario shows its changed data from the first refresh on. Only that refresh posts.
+    private func applyDemoChanges(_ scenario: DemoScenario) {
+      guard let previousSnapshot = scenario.githubSnapshot, let changedSnapshot = scenario.changedGitHubSnapshot,
+        let previousPipelines = scenario.pipelines, let changedPipelines = scenario.changedPipelines
+      else { return }
+      if !hasPostedDemoChanges {
+        hasPostedDemoChanges = true
+        post(notificationEvents(previous: previousSnapshot, current: changedSnapshot, dismissedPullRequests: dismissedPullRequests))
+        post(notificationEvents(previous: previousPipelines, current: changedPipelines, dismissedPipelines: dismissedPipelines))
+      }
+      githubSnapshot = changedSnapshot
+      pipelines = changedPipelines
+      rebuild()
+    }
+
     // Demo data never touches the cache, the network or saved dismissals.
     private func applyDemo(_ scenario: DemoScenario) {
       let now = Date()

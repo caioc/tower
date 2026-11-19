@@ -6,7 +6,10 @@ public struct CircleCISettings: Equatable, Sendable {
 
   public init(apiToken: String, projectSlugs: [String]) {
     self.apiToken = apiToken
-    self.projectSlugs = projectSlugs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    // A slug on two lines would fetch the same pipelines twice.
+    var seenSlugs: Set<String> = []
+    self.projectSlugs = projectSlugs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty && seenSlugs.insert($0).inserted }
   }
 }
 
@@ -78,13 +81,14 @@ public struct CircleCIClient: Sendable {
     let workflows: WorkflowList = try await get(workflowURL, token: token)
     if workflows.items.isEmpty {
       // No workflows means setup still runs, or the config filters removed every workflow.
-      pipeline.state = Self.setupPipelineStates.contains(candidate.pipelineState) ? .running : .succeeded
+      pipeline.state = Self.setupPipelineStates.contains(candidate.pipelineState) ? .running : .canceled
     } else {
       // A rerun adds a new workflow with the same name, so only the newest run of each name counts.
       let newestRuns = Dictionary(grouping: workflows.items, by: \.name).values.compactMap { runs in
         runs.max { $0.createdAt < $1.createdAt }
       }
       pipeline.state = Self.state(workflowStatuses: newestRuns.map(\.status))
+      pipeline.failedWorkflowIds = newestRuns.filter { Self.failedStatuses.contains($0.status) }.map(\.id).sorted()
       // A rerun adds a newer workflow, so a dismissed pipeline that fails again shows again.
       pipeline.newestWorkflowId = workflows.items.max { $0.createdAt < $1.createdAt }?.id
     }
@@ -127,12 +131,13 @@ public struct CircleCIClient: Sendable {
     return outputs
   }
 
-  // Canceled and not_run workflows are final and do not change the state.
+  // A canceled workflow means the pipeline did not pass. A not_run workflow does not change the state.
   private static func state(workflowStatuses statuses: [String]) -> PipelineState {
     if statuses.contains(where: failedStatuses.contains) { return .failed }
     if statuses.contains("on_hold") { return .onHold }
-    if statuses.contains("running") { return .running }
-    return .succeeded
+    // A queued workflow waits for a serial group or a concurrency slot, so the pipeline has not finished.
+    if statuses.contains("running") || statuses.contains("queued") { return .running }
+    return statuses.contains("success") && !statuses.contains("canceled") ? .succeeded : .canceled
   }
 
   // A slug with characters a URL cannot hold, such as a space, gives nil.

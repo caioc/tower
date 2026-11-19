@@ -93,6 +93,8 @@ struct SettingsGeneralTab: View {
     SettingsTabLayout {
       LaunchAtLoginSection()
       SettingsDivider()
+      NotificationsSection()
+      SettingsDivider()
       SettingsRow(label: "Panel view") {
         Picker("Panel view", selection: $panelLayout) {
           ForEach(PanelLayout.allCases, id: \.self) { layout in

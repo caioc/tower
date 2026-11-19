@@ -2,7 +2,12 @@ import AppKit
 import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
-  let store = QueueStore()
+  let store = QueueStore(notifier: AppDelegate.notifier)
+  // Hosted unit tests and demo mode (except notify) get no notifier, so they never post or ask for permission.
+  private static let notifier: UserNotificationNotifier? =
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+      && (!DemoLaunch.isActive || DemoLaunch.postsNotifications)
+    ? UserNotificationNotifier() : nil
   // Settings opens on the last tab for the app run, so the window builds each time from this value.
   private var settingsTab = SettingsTab.general
   private lazy var settingsWindowController = injectedSettingsWindowController ?? SettingsWindowController { [weak self, store] in
@@ -26,6 +31,8 @@ import SwiftUI
     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
     statusItemController = StatusItemController(
       store: store, openSettings: { [weak self] in self?.showSettings() }, quit: { NSApp.terminate(nil) })
+    // macOS shows the prompt only once. Later calls return the saved answer.
+    if !NotificationSettingsKeys.enabledKinds().isEmpty { Self.notifier?.requestAuthorization() }
     store.start()
   }
 
