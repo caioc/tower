@@ -296,6 +296,7 @@ struct CircleCIClientTests {
     (["on_hold", "failed"], .failed),
     (["on_hold", "running"], .onHold),
     (["running", "not_run"], .running),
+    (["success", "queued"], .running),
     ([], .canceled),
   ])
   func workflowStatusesMapToState(statuses: [String], expectedState: PipelineState) async throws {

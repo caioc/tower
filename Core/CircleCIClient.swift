@@ -135,7 +135,8 @@ public struct CircleCIClient: Sendable {
   private static func state(workflowStatuses statuses: [String]) -> PipelineState {
     if statuses.contains(where: failedStatuses.contains) { return .failed }
     if statuses.contains("on_hold") { return .onHold }
-    if statuses.contains("running") { return .running }
+    // A queued workflow waits for a serial group or a concurrency slot, so the pipeline has not finished.
+    if statuses.contains("running") || statuses.contains("queued") { return .running }
     return statuses.contains("success") && !statuses.contains("canceled") ? .succeeded : .canceled
   }
 
