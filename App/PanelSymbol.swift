@@ -13,6 +13,7 @@ enum PanelSymbol: String, CaseIterable {
   case offline = "ph-wifi-slash"
   case updateFailed = "ph-warning"
   case tokenMissing = "ph-key"
+  case trash = "ph-trash"
 }
 
 // Symbols for the Settings window, from the same asset catalog.

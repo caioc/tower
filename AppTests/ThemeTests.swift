@@ -66,6 +66,13 @@ private let highContrastDark = NSColor(srgbRed: 1, green: 1, blue: 0, alpha: 1)
     #expect(Theme.dotColor(dot) != Theme.textSecondary)
   }
 
+  // White text on the red Dismiss action needs 4.5:1, the AA level for small text.
+  @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+  func dismissFillKeepsWhiteTextReadable(appearanceName: NSAppearance.Name) throws {
+    let fill = try #require(resolved(Theme.dismissFillColor, in: appearanceName))
+    #expect(contrastRatio(fill, .white) >= 4.5)
+  }
+
   @Test(arguments: [BadgeVariant.failing, .ready])
   func increaseContrastValuesHaveMoreContrastThanTheStandardValues(variant: BadgeVariant) throws {
     let colors = try #require(Theme.statusColors(variant))

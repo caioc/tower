@@ -123,6 +123,41 @@ func disclosureOutcome(
   return .ignore
 }
 
+enum SlideKey: Sendable {
+  case left, right, returnKey, escape, upArrow, downArrow, space
+}
+
+enum SlideOutcome: Equatable, Sendable {
+  case show, close, dismiss, stay, passThrough
+}
+
+// Like Mail, a dismissible row slides toward the leading edge to show Dismiss, so the keys mirror in right-to-left.
+// While the slide shows, keys that cancel close it on the first press and do nothing else.
+func slideOutcome(
+  for key: SlideKey, layoutDirection: LayoutDirection, selectedItemIsDismissible: Bool, isSlid: Bool
+) -> SlideOutcome {
+  let opensSlide: SlideKey = layoutDirection == .rightToLeft ? .right : .left
+  guard isSlid else { return key == opensSlide && selectedItemIsDismissible ? .show : .passThrough }
+  if key == opensSlide { return .stay }
+  return key == .returnKey ? .dismiss : .close
+}
+
+// Horizontal scroll, in points, that a two-finger swipe must pass before the row slides.
+let swipeThreshold: CGFloat = 30
+
+// A swipe acts as the arrow key in the same direction. The scroll delta follows the content,
+// so natural scrolling decides which way the fingers moved.
+func swipeOutcome(
+  horizontalDelta: CGFloat, verticalDelta: CGFloat, isDirectionInvertedFromDevice: Bool,
+  layoutDirection: LayoutDirection, isDismissible: Bool, isSlid: Bool
+) -> SlideOutcome {
+  guard abs(horizontalDelta) >= swipeThreshold, abs(horizontalDelta) > abs(verticalDelta) else { return .passThrough }
+  let fingerDelta = isDirectionInvertedFromDevice ? horizontalDelta : -horizontalDelta
+  return slideOutcome(
+    for: fingerDelta < 0 ? .left : .right, layoutDirection: layoutDirection, selectedItemIsDismissible: isDismissible,
+    isSlid: isSlid)
+}
+
 enum PanelInput: Sendable {
   case click, commandClick, returnKey, space, escape, upArrow, downArrow, copy, rightClick, dismiss, undo
 }

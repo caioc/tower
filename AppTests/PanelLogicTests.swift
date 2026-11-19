@@ -1,6 +1,7 @@
 import AppKit
 import Core
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Tower
@@ -173,6 +174,97 @@ struct DisclosureOutcomeTests {
   func plainRowsAndNoSelectionAreIgnored(direction: DisclosureDirection) {
     #expect(disclosureOutcome(for: direction, selectedItemId: "r1", in: tabSections, expandedItemIds: []) == .ignore)
     #expect(disclosureOutcome(for: direction, selectedItemId: nil, in: tabSections, expandedItemIds: []) == .ignore)
+  }
+}
+
+struct SlideOutcomeTests {
+  @Test func leftShowsDismissOnADismissibleRow() {
+    #expect(slideOutcome(for: .left, layoutDirection: .leftToRight, selectedItemIsDismissible: true, isSlid: false) == .show)
+  }
+
+  @Test func leftOnARowThatCannotBeDismissedKeepsTodaysKeys() {
+    #expect(
+      slideOutcome(for: .left, layoutDirection: .leftToRight, selectedItemIsDismissible: false, isSlid: false)
+        == .passThrough)
+  }
+
+  @Test(arguments: [SlideKey.right, .returnKey, .escape, .upArrow, .downArrow, .space])
+  func otherKeysKeepTodaysKeysWhileNothingIsSlid(key: SlideKey) {
+    #expect(
+      slideOutcome(for: key, layoutDirection: .leftToRight, selectedItemIsDismissible: true, isSlid: false)
+        == .passThrough)
+  }
+
+  @Test func returnDismissesTheSlidRow() {
+    #expect(
+      slideOutcome(for: .returnKey, layoutDirection: .leftToRight, selectedItemIsDismissible: true, isSlid: true)
+        == .dismiss)
+  }
+
+  @Test(arguments: [SlideKey.right, .escape, .upArrow, .downArrow, .space])
+  func keysThatCancelCloseTheSlideOnTheFirstPress(key: SlideKey) {
+    #expect(
+      slideOutcome(for: key, layoutDirection: .leftToRight, selectedItemIsDismissible: true, isSlid: true) == .close)
+  }
+
+  @Test func leftAgainKeepsTheSlide() {
+    #expect(
+      slideOutcome(for: .left, layoutDirection: .leftToRight, selectedItemIsDismissible: true, isSlid: true) == .stay)
+  }
+
+  @Test func rightToLeftMirrorsTheArrows() {
+    #expect(slideOutcome(for: .right, layoutDirection: .rightToLeft, selectedItemIsDismissible: true, isSlid: false) == .show)
+    #expect(
+      slideOutcome(for: .left, layoutDirection: .rightToLeft, selectedItemIsDismissible: true, isSlid: false)
+        == .passThrough)
+    #expect(slideOutcome(for: .left, layoutDirection: .rightToLeft, selectedItemIsDismissible: true, isSlid: true) == .close)
+    #expect(slideOutcome(for: .right, layoutDirection: .rightToLeft, selectedItemIsDismissible: true, isSlid: true) == .stay)
+  }
+
+  @Test func upFromTheFirstChildStillReachesTheGroup() {
+    let rows = selectableRows(in: tabSections, layout: .split, tab: .needsYou, expandedItemIds: ["bot"])
+    #expect(nextSelectedItemId(in: rows, after: "bot-1", offset: -1) == "bot")
+  }
+}
+
+struct SwipeOutcomeTests {
+  // Natural scrolling is on by default: the scroll delta follows the fingers.
+  private func outcome(
+    horizontalDelta: CGFloat, verticalDelta: CGFloat = 0, isDirectionInvertedFromDevice: Bool = true,
+    layoutDirection: LayoutDirection = .leftToRight, isDismissible: Bool = true, isSlid: Bool = false
+  ) -> SlideOutcome {
+    swipeOutcome(
+      horizontalDelta: horizontalDelta, verticalDelta: verticalDelta,
+      isDirectionInvertedFromDevice: isDirectionInvertedFromDevice, layoutDirection: layoutDirection,
+      isDismissible: isDismissible, isSlid: isSlid)
+  }
+
+  @Test func swipeLeftShowsDismiss() {
+    #expect(outcome(horizontalDelta: -swipeThreshold) == .show)
+  }
+
+  @Test func swipeLeftWithNaturalScrollingOffFollowsTheFingers() {
+    #expect(outcome(horizontalDelta: swipeThreshold, isDirectionInvertedFromDevice: false) == .show)
+  }
+
+  @Test func shortOrMostlyVerticalSwipesDoNothing() {
+    #expect(outcome(horizontalDelta: -(swipeThreshold - 1)) == .passThrough)
+    #expect(outcome(horizontalDelta: -swipeThreshold, verticalDelta: swipeThreshold + 1) == .passThrough)
+  }
+
+  @Test func swipeOnARowThatCannotBeDismissedDoesNothing() {
+    #expect(outcome(horizontalDelta: -swipeThreshold, isDismissible: false) == .passThrough)
+  }
+
+  @Test func swipeRightClosesTheSlide() {
+    #expect(outcome(horizontalDelta: swipeThreshold, isSlid: true) == .close)
+    #expect(outcome(horizontalDelta: swipeThreshold) == .passThrough)
+    #expect(outcome(horizontalDelta: -swipeThreshold, isSlid: true) == .stay)
+  }
+
+  @Test func rightToLeftMirrorsTheSwipe() {
+    #expect(outcome(horizontalDelta: swipeThreshold, layoutDirection: .rightToLeft) == .show)
+    #expect(outcome(horizontalDelta: -swipeThreshold, layoutDirection: .rightToLeft, isSlid: true) == .close)
   }
 }
 

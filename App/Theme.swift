@@ -36,6 +36,7 @@ enum Theme {
     static let pendingRingWidth: CGFloat = 1.5
     static let disclosureSize: CGFloat = 9
     static let childIndent: CGFloat = 20
+    static let dismissActionWidth: CGFloat = 84
     static let settingsWidth: CGFloat = 520
     static let settingsLabelWidth: CGFloat = 150
   }
@@ -82,6 +83,10 @@ enum Theme {
   // The Buy me a coffee orange from Copilot Runway.
   static let donationAccent = Color(nsColor: dynamicColor(light: hex(0xC45A00), dark: hex(0xFF9F0A)))
   static let donationAccentText = Color(nsColor: dynamicColor(light: .white, dark: hex(0x1E1E1E)))
+
+  // The red of Mail's swipe action. Both shades keep white text at 4.5:1 or more.
+  static let dismissFillColor = dynamicColor(light: hex(0xD70015), dark: hex(0xD9372D))
+  static let dismissFill = Color(nsColor: dismissFillColor)
 
   // Selection matches menus: the system selection color, not the accent, so any accent keeps contrast.
   static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)

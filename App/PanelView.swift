@@ -17,6 +17,14 @@ struct PanelView: View {
   @State private var pinnedEdgeHeight: CGFloat = 0
   @State private var tabPickerHeight: CGFloat = 0
   @FocusState private var isListFocused: Bool
+  // The selected row that shows Dismiss. Only the selected row can slide, so one row at most shows it.
+  @State private var slidItemId: String?
+  @State private var slidDismissal: Dismissal?
+  @State private var hoveredItemId: String?
+  @State private var scrollMonitor: Any?
+  @State private var swipeDelta = CGSize.zero
+  @State private var hasSwipeActed = false
+  @Environment(\.layoutDirection) private var layoutDirection
 
   var body: some View {
     VStack(spacing: 0) {
@@ -57,6 +65,14 @@ struct PanelView: View {
     }
     .frame(width: Theme.Metrics.panelWidth)
     .onChange(of: selectedTab) { clearSelection() }
+    .onChange(of: selectedItemId) { _, newValue in
+      if slidItemId != newValue { slidItemId = nil }
+    }
+    // A refresh can remove the slid row, or a rerun can keep its id with another dismissal or none.
+    // Clearing here keeps it closed if the row comes back.
+    .onChange(of: isSlidRowListed) { _, isListed in
+      if !isListed { slidItemId = nil }
+    }
     .onChange(of: layout) { clearSelection() }
     .focusable()
     .focusEffectDisabled()
@@ -65,16 +81,31 @@ struct PanelView: View {
       isListFocused = true
       // The panel may open without activating the app, so the activation refresh can miss the Reconnect return.
       if store.hasAuthenticationFailure { Task { await store.refresh() } }
+      scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+        let (phase, delta, isDirectionInverted) = (
+          event.phase, CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY),
+          event.isDirectionInvertedFromDevice
+        )
+        let isUsed = MainActor.assumeIsolated {
+          handleSwipe(phase: phase, delta: delta, isDirectionInvertedFromDevice: isDirectionInverted)
+        }
+        return isUsed ? nil : event
+      }
     }
-    .onKeyPress(.downArrow) { handle(.downArrow) }
-    .onKeyPress(.upArrow) { handle(.upArrow) }
+    .onDisappear {
+      if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+      scrollMonitor = nil
+    }
+    .onKeyPress(.downArrow) { handleSlide(.downArrow) ?? handle(.downArrow) }
+    .onKeyPress(.upArrow) { handleSlide(.upArrow) ?? handle(.upArrow) }
     .onKeyPress(.return) {
+      if let result = handleSlide(.returnKey) { return result }
       guard let item = selectableItems.first(where: { $0.id == selectedItemId }) else { return .ignored }
       activate(item)
       return .handled
     }
-    .onKeyPress(.rightArrow) { handleDisclosure(.right) }
-    .onKeyPress(.leftArrow) { handleDisclosure(.left) }
+    .onKeyPress(.rightArrow) { handleSlide(.right) ?? handleDisclosure(.right) }
+    .onKeyPress(.leftArrow) { handleSlide(.left) ?? handleDisclosure(.left) }
     .onKeyPress(keys: ["1", "2"]) { press in
       guard press.modifiers.contains(.command), showsTabs, let tab = panelTab(forShortcut: press.characters) else {
         return .ignored
@@ -82,8 +113,8 @@ struct PanelView: View {
       selectedTab = tab
       return .handled
     }
-    .onKeyPress(.space) { handle(.space) }
-    .onKeyPress(.escape) { handle(.escape) }
+    .onKeyPress(.space) { handleSlide(.space) ?? handle(.space) }
+    .onKeyPress(.escape) { handleSlide(.escape) ?? handle(.escape) }
     .onKeyPress(keys: ["c"]) { press in
       guard press.modifiers.contains(.command) else { return .ignored }
       return handle(.copy)
@@ -194,9 +225,10 @@ struct PanelView: View {
 
   private func sectionView(_ section: QueueSection, visibleItemLimit: Int = .max) -> some View {
     QueueSectionView(
-      section: section, selectedItemId: selectedItemId, expandedItemIds: expandedItemIds,
+      section: section, selectedItemId: selectedItemId, expandedItemIds: expandedItemIds, slidItemId: slidItemId,
       visibleItemLimit: visibleItemLimit, popoverItemId: $popoverItemId, open: activate, showDetails: showDetails,
-      copyLink: { writeLink($0.url, to: .general) }, dismiss: store.dismiss, handlePopoverInput: handle)
+      copyLink: { writeLink($0.url, to: .general) }, dismiss: dismiss, hover: trackHover,
+      handlePopoverInput: handle, handlePopoverSlideKey: { handleSlide($0) ?? .ignored })
   }
 
   private var panelState: PanelContent {
@@ -303,13 +335,84 @@ struct PanelView: View {
     let outcome = panelKeyOutcome(for: action, selectedItemId: selectedItemId, popoverItemId: popoverItemId)
     popoverItemId = outcome.popoverItemId
     if outcome.copiesSelectedLink, let selectedItem { writeLink(selectedItem.url, to: .general) }
-    if outcome.dismissesSelectedItem, let selectedItem { store.dismiss(selectedItem) }
+    if outcome.dismissesSelectedItem, let selectedItem { dismiss(selectedItem) }
     if outcome.undoesLastDismissal { store.undoLastDismissal() }
     if let offset = outcome.selectionOffset { return moveSelection(by: offset) }
     return outcome.isHandled ? .handled : .ignored
   }
 
+  // Nil lets the key do what it does today.
+  private func handleSlide(_ key: SlideKey) -> KeyPress.Result? {
+    let selectedItem = selectableItems.first { $0.id == selectedItemId }
+    let outcome = slideOutcome(
+      for: key, layoutDirection: layoutDirection, selectedItemIsDismissible: selectedItem?.dismissal != nil,
+      isSlid: slidItemId != nil)
+    switch outcome {
+    case .show: if let selectedItem { showSlide(on: selectedItem) }
+    case .close: slidItemId = nil
+    case .dismiss: if let selectedItem { dismiss(selectedItem) }
+    case .stay: break
+    case .passThrough: return nil
+    }
+    return .handled
+  }
+
+  // The popover closes, so it does not cover the slid row.
+  private func showSlide(on item: QueueItem) {
+    selectedItemId = item.id
+    slidItemId = item.id
+    slidDismissal = item.dismissal
+    popoverItemId = nil
+  }
+
+  private var isSlidRowListed: Bool {
+    guard let slidItemId else { return false }
+    return selectableItems.contains { $0.id == slidItemId && $0.dismissal == slidDismissal }
+  }
+
+  private func dismiss(_ item: QueueItem) {
+    slidItemId = nil
+    store.dismiss(item)
+  }
+
+  private func trackHover(_ item: QueueItem, isHovering: Bool) {
+    if isHovering {
+      hoveredItemId = item.id
+    } else if hoveredItemId == item.id {
+      hoveredItemId = nil
+    }
+  }
+
+  // A two-finger swipe arrives as scroll events with a phase. Each swipe acts once, on the row under the pointer,
+  // and momentum after the fingers lift is ignored. False sends the event on to the scroll view.
+  private func handleSwipe(phase: NSEvent.Phase, delta: CGSize, isDirectionInvertedFromDevice: Bool) -> Bool {
+    switch phase {
+    case .began:
+      swipeDelta = .zero
+      hasSwipeActed = false
+    case .changed: break
+    default: return false
+    }
+    guard !hasSwipeActed, let hoveredItem = selectableItems.first(where: { $0.id == hoveredItemId }) else {
+      return false
+    }
+    swipeDelta.width += delta.width
+    swipeDelta.height += delta.height
+    let outcome = swipeOutcome(
+      horizontalDelta: swipeDelta.width, verticalDelta: swipeDelta.height,
+      isDirectionInvertedFromDevice: isDirectionInvertedFromDevice, layoutDirection: layoutDirection,
+      isDismissible: hoveredItem.dismissal != nil, isSlid: slidItemId == hoveredItem.id)
+    switch outcome {
+    case .show: showSlide(on: hoveredItem)
+    case .close: slidItemId = nil
+    case .dismiss, .stay, .passThrough: return false
+    }
+    hasSwipeActed = true
+    return true
+  }
+
   private func showDetails(_ item: QueueItem) {
+    slidItemId = nil
     selectedItemId = item.id
     popoverItemId = item.id
   }
