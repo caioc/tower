@@ -22,6 +22,31 @@ private final class CircleCIResponse: @unchecked Sendable {
 
 private let pipelineCreatedAt = Date().formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
 
+// The fixture with the first authored PR given this many approvals.
+private func githubData(approvals: Int) throws -> Data {
+  var response = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
+  var data = try #require(response["data"] as? [String: Any])
+  var authored = try #require(data["authored"] as? [String: Any])
+  var nodes = try #require(authored["nodes"] as? [[String: Any]])
+  nodes[0]["latestOpinionatedReviews"] = ["nodes": Array(repeating: ["state": "APPROVED"], count: approvals)]
+  authored["nodes"] = nodes
+  data["authored"] = authored
+  response["data"] = data
+  return try JSONSerialization.data(withJSONObject: response)
+}
+
+// The test changes the values only between refreshes, so no lock is needed.
+private final class GitHubResponse: @unchecked Sendable {
+  var body: Data
+  init(body: Data) { self.body = body }
+}
+
+private func githubTransport(_ response: GitHubResponse) -> StubTransport {
+  StubTransport { request in
+    request.url?.host() == "api.github.com" ? (response.body, 200) : (Data(#"{"items":[]}"#.utf8), 200)
+  }
+}
+
 // One branch pipeline without a PR. Its state comes from the one workflow the stub returns.
 private func circleciTransport(_ response: CircleCIResponse) throws -> StubTransport {
   let githubData = try fixture("github-search.json")
@@ -35,9 +60,14 @@ private func circleciTransport(_ response: CircleCIResponse) throws -> StubTrans
   }
 }
 
+// The test changes the values only between refreshes, so no lock is needed.
+private final class SettingsBox: @unchecked Sendable {
+  var organizations: [String] = []
+}
+
 @MainActor private func makeStore(
   transport: StubTransport, notifier: FakeNotifier, cacheDirectory: URL? = nil,
-  enabledKinds: Set<NotificationEventKind> = Set(NotificationEventKind.allCases)
+  enabledKinds: Set<NotificationEventKind> = Set(NotificationEventKind.allCases), settings: SettingsBox = SettingsBox()
 ) -> QueueStore {
   QueueStore(
     tokenProvider: StubTokenProvider(), transport: transport,
@@ -45,7 +75,7 @@ private func circleciTransport(_ response: CircleCIResponse) throws -> StubTrans
       ?? FileManager.default.temporaryDirectory.appendingPathComponent("tower-notify-\(UUID().uuidString)"),
     loadJiraSettings: { nil },
     loadCircleCISettings: { CircleCISettings(apiToken: "circle-token", projectSlugs: ["gh/acme/app-web"]) },
-    loadGitHubOrganizations: { [] }, notifier: notifier, loadEnabledNotificationKinds: { enabledKinds },
+    loadGitHubOrganizations: { settings.organizations }, notifier: notifier, loadEnabledNotificationKinds: { enabledKinds },
     defaults: UserDefaults(suiteName: "tower-notify-\(UUID().uuidString)")!)
 }
 
@@ -128,6 +158,63 @@ private func circleciTransport(_ response: CircleCIResponse) throws -> StubTrans
     await store.refresh()
     response.workflowStatus = "failed"
     await store.refresh()
+    #expect(notifier.postedEvents.isEmpty)
+  }
+}
+
+@MainActor struct QueueStoreGitHubNotificationTests {
+  @Test func higherApprovalCountPostsApproved() async throws {
+    let response = GitHubResponse(body: try githubData(approvals: 0))
+    let notifier = FakeNotifier()
+    let store = makeStore(transport: githubTransport(response), notifier: notifier)
+    await store.refresh()
+    response.body = try githubData(approvals: 1)
+    await store.refresh()
+    #expect(notifier.postedEvents.map(\.kind) == [.approvalReceived])
+    #expect(notifier.postedEvents.first?.url == URL(string: "https://github.com/acme/app-web/pull/2184"))
+  }
+
+  @Test func newOrganizationsStartANewBaseline() async throws {
+    let response = GitHubResponse(body: try githubData(approvals: 0))
+    let notifier = FakeNotifier()
+    let settings = SettingsBox()
+    let store = makeStore(transport: githubTransport(response), notifier: notifier, settings: settings)
+    await store.refresh()
+    settings.organizations = ["acme"]
+    response.body = try githubData(approvals: 1)
+    await store.refresh()
+    #expect(notifier.postedEvents.isEmpty)
+  }
+
+  @Test func pullRequestMissingFromOneResponsePostsNothingWhenItReturns() async throws {
+    let fullBody = try githubData(approvals: 1)
+    var response = try #require(try JSONSerialization.jsonObject(with: fullBody) as? [String: Any])
+    var data = try #require(response["data"] as? [String: Any])
+    var authored = try #require(data["authored"] as? [String: Any])
+    var nodes = try #require(authored["nodes"] as? [Any])
+    nodes[0] = NSNull()
+    authored["nodes"] = nodes
+    data["authored"] = authored
+    response["data"] = data
+    let githubResponse = GitHubResponse(body: fullBody)
+    let notifier = FakeNotifier()
+    let store = makeStore(transport: githubTransport(githubResponse), notifier: notifier)
+    await store.refresh()
+    githubResponse.body = try JSONSerialization.data(withJSONObject: response)
+    await store.refresh()
+    githubResponse.body = fullBody
+    await store.refresh()
+    #expect(notifier.postedEvents.isEmpty)
+  }
+
+  @Test func demoModePostsNothing() async throws {
+    let notifier = FakeNotifier()
+    let store = makeStore(transport: githubTransport(GitHubResponse(body: try githubData(approvals: 0))), notifier: notifier)
+    store.demoScenario = DemoScenario(name: .clearSkies, now: .now)
+    await store.refresh()
+    store.demoScenario = DemoScenario(name: .typical, now: .now)
+    await store.refresh()
+    #expect(!store.sections.isEmpty)
     #expect(notifier.postedEvents.isEmpty)
   }
 }

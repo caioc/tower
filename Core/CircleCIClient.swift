@@ -78,7 +78,7 @@ public struct CircleCIClient: Sendable {
     let workflows: WorkflowList = try await get(workflowURL, token: token)
     if workflows.items.isEmpty {
       // No workflows means setup still runs, or the config filters removed every workflow.
-      pipeline.state = Self.setupPipelineStates.contains(candidate.pipelineState) ? .running : .succeeded
+      pipeline.state = Self.setupPipelineStates.contains(candidate.pipelineState) ? .running : .canceled
     } else {
       // A rerun adds a new workflow with the same name, so only the newest run of each name counts.
       let newestRuns = Dictionary(grouping: workflows.items, by: \.name).values.compactMap { runs in
@@ -127,12 +127,12 @@ public struct CircleCIClient: Sendable {
     return outputs
   }
 
-  // Canceled and not_run workflows are final and do not change the state.
+  // Canceled and not_run workflows are final and do not change the state. With no success either, nothing passed.
   private static func state(workflowStatuses statuses: [String]) -> PipelineState {
     if statuses.contains(where: failedStatuses.contains) { return .failed }
     if statuses.contains("on_hold") { return .onHold }
     if statuses.contains("running") { return .running }
-    return .succeeded
+    return statuses.contains("success") ? .succeeded : .canceled
   }
 
   // A slug with characters a URL cannot hold, such as a space, gives nil.

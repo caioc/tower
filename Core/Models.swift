@@ -115,8 +115,9 @@ public struct JiraTicket: Codable, Sendable, Equatable {
   }
 }
 
+// Canceled means the pipeline ended with no success and no failure: canceled or not-run workflows, or none at all.
 public enum PipelineState: String, Codable, Sendable {
-  case running, onHold, failed, succeeded
+  case running, onHold, failed, succeeded, canceled
 }
 
 public struct Pipeline: Codable, Sendable, Equatable {

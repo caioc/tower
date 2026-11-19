@@ -276,12 +276,13 @@ struct CircleCIClientTests {
     (["error"], .failed),
     (["failing", "success"], .failed),
     (["unauthorized"], .failed),
-    (["not_run"], .succeeded),
+    (["not_run"], .canceled),
+    (["canceled"], .canceled),
     (["success", "not_run"], .succeeded),
     (["on_hold", "failed"], .failed),
     (["on_hold", "running"], .onHold),
     (["running", "not_run"], .running),
-    ([], .succeeded),
+    ([], .canceled),
   ])
   func workflowStatusesMapToState(statuses: [String], expectedState: PipelineState) async throws {
     let pageData = try fixture("circleci-pipelines-mine.json")
@@ -297,7 +298,7 @@ struct CircleCIClientTests {
     ("setup-pending", PipelineState.running),
     ("setup", .running),
     ("pending", .running),
-    ("created", .succeeded),
+    ("created", .canceled),
     ("errored", .failed),
   ])
   func pipelineWithoutWorkflowsMapsFromPipelineState(pipelineState: String, expectedState: PipelineState) async throws {

@@ -43,5 +43,10 @@ private struct NotificationKindToggle: View {
   var body: some View {
     Toggle(kind.title, isOn: $isOn)
       .toggleStyle(.checkbox)
+      // Launch asks only when a switch is on, so a switch turned on later asks here. macOS prompts at most once.
+      .onChange(of: isOn) { _, isOn in
+        guard isOn, !DemoLaunch.isActive else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+      }
   }
 }

@@ -36,14 +36,16 @@ public func notificationEvents(
   previous: GitHubSnapshot, current: GitHubSnapshot, dismissedPullRequests: Set<PullRequestDismissal>
 ) -> [NotificationEvent] {
   var events: [NotificationEvent] = []
-  let previousAuthoredById = Dictionary(previous.authoredPullRequests.map { ($0.itemId, $0) }) { first, _ in first }
+  let previousAuthoredByURL = Dictionary(previous.authoredPullRequests.map { ($0.url, $0) }) { first, _ in first }
   for pullRequest in current.authoredPullRequests {
-    let previousPullRequest = previousAuthoredById[pullRequest.itemId]
+    let previousPullRequest = previousAuthoredByURL[pullRequest.url]
     if pullRequest.approvalCount > previousPullRequest?.approvalCount ?? 0 {
       events.append(pullRequest.event(.approvalReceived, state: "approvals=\(pullRequest.approvalCount)"))
     }
-    let wasFailing = previousPullRequest?.isFailing ?? false
-    let wasPassing = previousPullRequest?.checkState == .success
+    // A new commit starts a new check run, so a result on an older commit does not count.
+    let previousChecks = previousPullRequest?.headCommitId == pullRequest.headCommitId ? previousPullRequest : nil
+    let wasFailing = previousChecks?.isFailing ?? false
+    let wasPassing = previousChecks?.checkState == .success
     if pullRequest.isFailing && !wasFailing {
       events.append(pullRequest.event(.ciFailed, state: pullRequest.headCommitId ?? ""))
     } else if pullRequest.checkState == .success && !wasPassing {
@@ -57,7 +59,7 @@ public func notificationEvents(
     && !previousRequests.contains(pullRequest.reviewRequestKey)
     && !dismissedPullRequests.contains(pullRequest.dismissal)
   {
-    events.append(pullRequest.event(.reviewRequested, state: pullRequest.reviewRequestKey))
+    events.append(pullRequest.event(.reviewRequested, state: pullRequest.reviewRequestTime))
   }
   return events
 }
@@ -67,17 +69,20 @@ public func notificationEvents(
 public func notificationEvents(
   previous: [Pipeline], current: [Pipeline], dismissedPipelines: Set<PipelineDismissal>
 ) -> [NotificationEvent] {
-  let previousStateById = Dictionary(previous.map { ($0.id, $0.state) }) { first, _ in first }
+  let previousById = Dictionary(previous.map { ($0.id, $0) }) { first, _ in first }
   return current.compactMap { pipeline in
     guard !pipeline.hasPullRequest, !dismissedPipelines.contains(pipeline.dismissal) else { return nil }
-    let previousState = previousStateById[pipeline.id] ?? .running
+    // A rerun adds a newer workflow, so a result from the older workflow does not count.
+    let previousPipeline = previousById[pipeline.id]
+    let previousState =
+      previousPipeline?.newestWorkflowId == pipeline.newestWorkflowId ? previousPipeline?.state ?? .running : .running
     guard pipeline.state != previousState else { return nil }
     let kind: NotificationEventKind
     switch pipeline.state {
     case .failed: kind = .ciFailed
     case .succeeded: kind = .ciPassed
     case .onHold: kind = .ciNeedsApproval
-    case .running: return nil
+    case .running, .canceled: return nil
     }
     let repository = pipeline.projectSlug.split(separator: "/").last.map(String.init) ?? pipeline.projectSlug
     return NotificationEvent(
@@ -88,12 +93,12 @@ public func notificationEvents(
 
 extension PullRequest {
   // Holds the request time, so a new request on the same PR gives a new key. A new commit does not.
-  fileprivate var reviewRequestKey: String {
-    "\(itemId):\(reviewRequestedAt.map { "\($0.timeIntervalSince1970)" } ?? "")"
-  }
+  fileprivate var reviewRequestKey: String { "\(url.absoluteString):\(reviewRequestTime)" }
+
+  fileprivate var reviewRequestTime: String { reviewRequestedAt.map { "\($0.timeIntervalSince1970)" } ?? "" }
 
   fileprivate func event(_ kind: NotificationEventKind, state: String) -> NotificationEvent {
     NotificationEvent(
-      kind: kind, id: "\(kind.rawValue):\(itemId):\(state)", body: "\(title)\n\(repository) #\(number)", url: url)
+      kind: kind, id: "\(kind.rawValue):\(url.absoluteString):\(state)", body: "\(title)\n\(repository) #\(number)", url: url)
   }
 }

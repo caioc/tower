@@ -197,6 +197,25 @@ struct GitHubClientTests {
     #expect(snapshot.authoredPullRequests.count == 2)
   }
 
+  @Test func reviewRequestTimeIgnoresALaterRequestToSomeoneElse() async throws {
+    var response = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
+    var data = try #require(response["data"] as? [String: Any])
+    var requested = try #require(data["requested"] as? [String: Any])
+    var nodes = try #require(requested["nodes"] as? [[String: Any]])
+    nodes[0]["timelineItems"] = [
+      "nodes": [
+        ["createdAt": "2027-01-14T09:00:00Z", "requestedReviewer": ["login": "octo-me"]],
+        ["createdAt": "2027-01-14T11:00:00Z", "requestedReviewer": ["login": "someone-else"]],
+      ]
+    ]
+    requested["nodes"] = nodes
+    data["requested"] = requested
+    response["data"] = data
+    let body = try JSONSerialization.data(withJSONObject: response)
+    let snapshot = try await client(transport: StubTransport { _ in (body, 200) }).fetch(now: now)
+    #expect(snapshot.reviewRequests.first?.reviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
+  }
+
   @Test func nullSearchNodeWithErrorsKeepsTheOtherPullRequests() async throws {
     var response = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
     var data = try #require(response["data"] as? [String: Any])

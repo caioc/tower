@@ -5,6 +5,7 @@ import Testing
 private let requestTime = Date(timeIntervalSince1970: 1_800_000_000)
 
 private func pullRequest(
+  owner: String = "acme",
   number: Int = 1,
   title: String = "Add login",
   checkState: CheckState? = .pending,
@@ -17,7 +18,7 @@ private func pullRequest(
 ) -> PullRequest {
   PullRequest(
     repository: "app-web", number: number, title: title,
-    url: URL(string: "https://github.com/acme/app-web/pull/\(number)")!, author: "someone", authorIsBot: false,
+    url: URL(string: "https://github.com/\(owner)/app-web/pull/\(number)")!, author: "someone", authorIsBot: false,
     isDraft: false, updatedAt: requestTime, headBranch: "feature/x", reviewDecision: nil, checkState: checkState,
     failedCheckCount: checkState == .failure ? 1 : 0, additions: 0, deletions: 0,
     requestedReviewerLogins: requestedReviewerLogins, requestedTeamSlugs: requestedTeamSlugs, reviewCount: 0,
@@ -66,7 +67,7 @@ struct AuthoredPullRequestEventTests {
     #expect(
       events == [
         NotificationEvent(
-          kind: .approvalReceived, id: "approvalReceived:pr:app-web#1:approvals=1", body: "Add login\napp-web #1",
+          kind: .approvalReceived, id: "approvalReceived:https://github.com/acme/app-web/pull/1:approvals=1", body: "Add login\napp-web #1",
           url: URL(string: "https://github.com/acme/app-web/pull/1")!)
       ])
     #expect(events.first?.title == "Approved")
@@ -76,7 +77,7 @@ struct AuthoredPullRequestEventTests {
     let events = githubEvents(
       previous: snapshot(authored: [pullRequest(approvalCount: 1)]),
       current: snapshot(authored: [pullRequest(approvalCount: 2)]))
-    #expect(events.map(\.id) == ["approvalReceived:pr:app-web#1:approvals=2"])
+    #expect(events.map(\.id) == ["approvalReceived:https://github.com/acme/app-web/pull/1:approvals=2"])
   }
 
   @Test func lowerApprovalCountGivesNoEvent() {
@@ -92,7 +93,7 @@ struct AuthoredPullRequestEventTests {
       previous: snapshot(authored: [pullRequest(checkState: .pending)]),
       current: snapshot(authored: [pullRequest(checkState: failedState)]))
     #expect(events.map(\.kind) == [.ciFailed])
-    #expect(events.first?.id == "ciFailed:pr:app-web#1:commit-1")
+    #expect(events.first?.id == "ciFailed:https://github.com/acme/app-web/pull/1:commit-1")
   }
 
   @Test func failureToErrorGivesNoSecondEvent() {
@@ -107,6 +108,22 @@ struct AuthoredPullRequestEventTests {
       previous: snapshot(authored: [pullRequest(checkState: .failure)]),
       current: snapshot(authored: [pullRequest(checkState: .success)]))
     #expect(events.map(\.kind) == [.ciPassed])
+  }
+
+  @Test func newCommitThatFailsAfterAnOlderFailureGivesCIFailed() {
+    let events = githubEvents(
+      previous: snapshot(authored: [pullRequest(checkState: .failure, headCommitId: "commit-1")]),
+      current: snapshot(authored: [pullRequest(checkState: .failure, headCommitId: "commit-2")]))
+    #expect(events.map(\.id) == ["ciFailed:https://github.com/acme/app-web/pull/1:commit-2"])
+  }
+
+  @Test func sameRepositoryNameInAnotherOwnerIsAnotherPullRequest() {
+    let events = githubEvents(
+      previous: snapshot(authored: [pullRequest(owner: "acme", approvalCount: 1)]),
+      current: snapshot(authored: [
+        pullRequest(owner: "acme", approvalCount: 1), pullRequest(owner: "other", approvalCount: 1),
+      ]))
+    #expect(events.map(\.id) == ["approvalReceived:https://github.com/other/app-web/pull/1:approvals=1"])
   }
 
   @Test func newPullRequestCountsAsRunningBefore() {
@@ -196,6 +213,18 @@ struct PipelineEventTests {
 
   @Test func pipelineBackToRunningGivesNoEvent() {
     let events = pipelineEvents(previous: [pipeline(state: .failed)], current: [pipeline(state: .running)])
+    #expect(events.isEmpty)
+  }
+
+  @Test func rerunThatFailsAfterAnOlderFailureGivesCIFailed() {
+    let events = pipelineEvents(
+      previous: [pipeline(state: .failed, newestWorkflowId: "workflow-1")],
+      current: [pipeline(state: .failed, newestWorkflowId: "workflow-2")])
+    #expect(events.map(\.id) == ["ciFailed:pipeline:pipeline-1842:workflow-2"])
+  }
+
+  @Test func canceledPipelineGivesNoEvent() {
+    let events = pipelineEvents(previous: [pipeline(state: .running)], current: [pipeline(state: .canceled)])
     #expect(events.isEmpty)
   }
 

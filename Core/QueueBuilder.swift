@@ -91,7 +91,7 @@ public func buildQueue(_ input: QueueInput, now: Date) -> [QueueSection] {
     case .onHold:
       itemsByKind[.watch, default: []].append(
         pipelineItem(pipeline, symbol: .approvalHold, badge: Badge(text: "Needs approval", variant: .urgent), now: now))
-    case .succeeded:
+    case .succeeded, .canceled:
       break
     }
   }

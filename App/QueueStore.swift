@@ -95,12 +95,14 @@ struct UndoableDismissal: Equatable {
   private let notifier: (any Notifier)?
   private let loadEnabledNotificationKinds: () -> Set<NotificationEventKind>
   // Set only by a successful fetch in this app run, never by the cache, so launch does not post old changes.
-  private var githubNotificationBaseline: GitHubSnapshot?
-  private var circleciNotificationBaseline: [Pipeline]?
+  // Each baseline keeps the settings it was fetched with. New settings start a new baseline that posts nothing.
+  private var githubNotificationBaseline: (snapshot: GitHubSnapshot, organizations: [String])?
+  private var circleciNotificationBaseline: (pipelines: [Pipeline], projectSlugs: [String])?
   private let defaults: UserDefaults
   private var pollingTask: Task<Void, Never>?
   #if DEBUG
-    private let demoScenario = DemoLaunch.scenario
+    // Settable inside the module so App tests can check that demo mode posts nothing.
+    var demoScenario = DemoLaunch.scenario
   #endif
   private var activationObserver: NSObjectProtocol?
 
@@ -203,9 +205,11 @@ struct UndoableDismissal: Equatable {
     isRefreshing = true
     defer { isRefreshing = false }
     let now = Date()
-    let githubClient = GitHubClient(tokenProvider: tokenProvider, transport: transport, owners: loadGitHubOrganizations())
+    let githubOrganizations = loadGitHubOrganizations()
+    let circleciSettings = loadCircleCISettings()
+    let githubClient = GitHubClient(tokenProvider: tokenProvider, transport: transport, owners: githubOrganizations)
     let jiraClient = JiraClient(settings: loadJiraSettings(), transport: transport)
-    let circleciClient = CircleCIClient(settings: loadCircleCISettings(), transport: transport)
+    let circleciClient = CircleCIClient(settings: circleciSettings, transport: transport)
     async let githubResult = Result { () async throws(SourceFailure) -> GitHubSnapshot in try await githubClient.fetch(now: now) }
     async let jiraResult = Result { () async throws(SourceFailure) -> [JiraTicket] in try await jiraClient.fetch() }
     async let circleciResult = Result { () async throws(SourceFailure) -> [Pipeline] in try await circleciClient.fetch(now: now) }
@@ -222,11 +226,14 @@ struct UndoableDismissal: Equatable {
         dismissedPullRequests = keptPullRequestDismissals
         DismissalKeys.save(keptPullRequestDismissals, key: DismissalKeys.dismissedPullRequests, defaults: defaults)
       }
-      if let githubNotificationBaseline {
-        post(notificationEvents(
-          previous: githubNotificationBaseline, current: snapshot, dismissedPullRequests: dismissedPullRequests))
+      if let baseline = githubNotificationBaseline, baseline.organizations == githubOrganizations,
+        baseline.snapshot.viewerLogin == snapshot.viewerLogin
+      {
+        post(notificationEvents(previous: baseline.snapshot, current: snapshot, dismissedPullRequests: dismissedPullRequests))
+        githubNotificationBaseline = (keepingMissingPullRequests(of: baseline.snapshot, in: snapshot), githubOrganizations)
+      } else {
+        githubNotificationBaseline = (snapshot, githubOrganizations)
       }
-      githubNotificationBaseline = snapshot
     case .failure(let failure):
       githubStatus = .failed(failure)
     }
@@ -256,11 +263,11 @@ struct UndoableDismissal: Equatable {
         dismissedPipelines = keptDismissals
         DismissalKeys.save(keptDismissals, key: DismissalKeys.dismissedPipelines, defaults: defaults)
       }
-      if let circleciNotificationBaseline {
-        post(notificationEvents(
-          previous: circleciNotificationBaseline, current: fetchedPipelines, dismissedPipelines: dismissedPipelines))
+      let projectSlugs = circleciSettings?.projectSlugs ?? []
+      if let baseline = circleciNotificationBaseline, baseline.projectSlugs == projectSlugs {
+        post(notificationEvents(previous: baseline.pipelines, current: fetchedPipelines, dismissedPipelines: dismissedPipelines))
       }
-      circleciNotificationBaseline = fetchedPipelines
+      circleciNotificationBaseline = (fetchedPipelines, projectSlugs)
     case .failure(let failure):
       circleciStatus = .failed(failure)
       if failure == .notConfigured {
@@ -271,6 +278,16 @@ struct UndoableDismissal: Equatable {
       }
     }
     rebuild()
+  }
+
+  // GraphQL can drop a PR from one response with an error. Its last known state stays, so its return posts nothing.
+  private func keepingMissingPullRequests(of previous: GitHubSnapshot, in current: GitHubSnapshot) -> GitHubSnapshot {
+    var baseline = current
+    let authoredURLs = Set(current.authoredPullRequests.map(\.url))
+    baseline.authoredPullRequests += previous.authoredPullRequests.filter { !authoredURLs.contains($0.url) }
+    let requestedURLs = Set(current.reviewRequests.map(\.url))
+    baseline.reviewRequests += previous.reviewRequests.filter { !requestedURLs.contains($0.url) }
+    return baseline
   }
 
   private func post(_ events: [NotificationEvent]) {
