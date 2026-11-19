@@ -53,19 +53,18 @@ public func notificationEvents(
     }
   }
   // Every previous request counts, so a stale approval that reopens an old request posts nothing.
-  let previousRequestTimes = Dictionary(previous.reviewRequests.map { ($0.url, $0.viewerReviewRequestedAt) }) { first, _ in
-    first
+  let previousNewestRequestTimes = Dictionary(previous.reviewRequests.map { ($0.url, $0.reviewRequestedAt) }) {
+    first, _ in first
   }
   for pullRequest in current.reviewRequests
   where isOpenReviewRequest(pullRequest, viewerLogin: current.viewerLogin)
     && !dismissedPullRequests.contains(pullRequest.dismissal)
   {
-    // On a known PR only a later request to the viewer counts. An earlier or missing time comes from a removed
-    // request or from an event outside the fetched window, not from a new request.
-    if let previousTime = previousRequestTimes[pullRequest.url] {
-      guard let previousTime, let currentTime = pullRequest.viewerReviewRequestedAt, currentTime > previousTime else {
-        continue
-      }
+    // On a known PR only a request to the viewer that is newer than every request the previous fetch saw counts.
+    // An older one, for example a team request left after a direct request goes away, is not a new request.
+    if let previousNewestTime = previousNewestRequestTimes[pullRequest.url] {
+      guard let currentTime = pullRequest.viewerReviewRequestedAt, previousNewestTime.map({ currentTime > $0 }) ?? true
+      else { continue }
     }
     let requestTime = pullRequest.viewerReviewRequestedAt ?? pullRequest.reviewRequestedAt
     events.append(pullRequest.event(.reviewRequested, state: requestTime.map { "\($0.timeIntervalSince1970)" } ?? ""))

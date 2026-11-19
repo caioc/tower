@@ -198,6 +198,11 @@ struct CircleCIClientTests {
     #expect(transport.requests.isEmpty)
   }
 
+  @Test func repeatedSlugIsKeptOnce() {
+    let settings = CircleCISettings(apiToken: "circle-token", projectSlugs: ["gh/acme/app-web", " gh/acme/app-web", "gh/acme/api"])
+    #expect(settings.projectSlugs == ["gh/acme/app-web", "gh/acme/api"])
+  }
+
   @Test func slugWhitespaceIsTrimmed() async throws {
     let transport = fixtureTransport()
     let paddedSlug = CircleCISettings(apiToken: "circle-token", projectSlugs: ["  gh/acme/app-web \t"])
@@ -281,7 +286,7 @@ struct CircleCIClientTests {
   }
 
   @Test(arguments: [
-    (["success", "canceled"], PipelineState.succeeded),
+    (["success", "canceled"], PipelineState.canceled),
     (["error"], .failed),
     (["failing", "success"], .failed),
     (["unauthorized"], .failed),

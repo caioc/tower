@@ -6,7 +6,10 @@ public struct CircleCISettings: Equatable, Sendable {
 
   public init(apiToken: String, projectSlugs: [String]) {
     self.apiToken = apiToken
-    self.projectSlugs = projectSlugs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    // A slug on two lines would fetch the same pipelines twice.
+    var seenSlugs: Set<String> = []
+    self.projectSlugs = projectSlugs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty && seenSlugs.insert($0).inserted }
   }
 }
 
@@ -128,12 +131,12 @@ public struct CircleCIClient: Sendable {
     return outputs
   }
 
-  // Canceled and not_run workflows are final and do not change the state. With no success either, nothing passed.
+  // A canceled workflow means the pipeline did not pass. A not_run workflow does not change the state.
   private static func state(workflowStatuses statuses: [String]) -> PipelineState {
     if statuses.contains(where: failedStatuses.contains) { return .failed }
     if statuses.contains("on_hold") { return .onHold }
     if statuses.contains("running") { return .running }
-    return statuses.contains("success") ? .succeeded : .canceled
+    return statuses.contains("success") && !statuses.contains("canceled") ? .succeeded : .canceled
   }
 
   // A slug with characters a URL cannot hold, such as a space, gives nil.

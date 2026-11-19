@@ -207,6 +207,27 @@ struct ReviewRequestEventTests {
     #expect(events.isEmpty)
   }
 
+  @Test func olderTeamRequestLeftAfterTheDirectRequestGoesAwayGivesNoEvent() {
+    var directRequest = pullRequest(reviewRequestedAt: requestTime.addingTimeInterval(60))
+    directRequest.viewerReviewRequestedAt = requestTime
+    var teamRequestLeft = directRequest
+    teamRequestLeft.requestedReviewerLogins = []
+    teamRequestLeft.requestedTeamSlugs = ["web"]
+    teamRequestLeft.viewerReviewRequestedAt = requestTime.addingTimeInterval(60)
+    let events = githubEvents(
+      previous: snapshot(reviewRequests: [directRequest]), current: snapshot(reviewRequests: [teamRequestLeft]))
+    #expect(events.isEmpty)
+  }
+
+  @Test func newRequestAfterAViewerTimeOutsideTheWindowGivesAnEvent() {
+    var requestOutsideWindow = pullRequest()
+    requestOutsideWindow.viewerReviewRequestedAt = nil
+    let events = githubEvents(
+      previous: snapshot(reviewRequests: [requestOutsideWindow]),
+      current: snapshot(reviewRequests: [pullRequest(reviewRequestedAt: requestTime.addingTimeInterval(60))]))
+    #expect(events.map(\.kind) == [.reviewRequested])
+  }
+
   @Test func viewerRequestOutsideTheFetchedWindowGivesNoEvent() {
     var requestOutsideWindow = pullRequest()
     requestOutsideWindow.viewerReviewRequestedAt = nil
