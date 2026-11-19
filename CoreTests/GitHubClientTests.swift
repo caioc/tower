@@ -199,16 +199,16 @@ struct GitHubClientTests {
 
   // Puts the given reviewers and request events on the first review request of the fixture.
   private func firstReviewRequest(
-    reviewers: [[String: String]], requestEvents: [(createdAt: String, reviewer: [String: String])]
+    reviewers: [[String: String]], requestEvents: [(createdAt: String, reviewer: [String: String])],
+    leadingNullEvent: Bool = false
   ) async throws -> PullRequest? {
     var response = try #require(try JSONSerialization.jsonObject(with: fixture("github-search.json")) as? [String: Any])
     var data = try #require(response["data"] as? [String: Any])
     var requested = try #require(data["requested"] as? [String: Any])
     var nodes = try #require(requested["nodes"] as? [[String: Any]])
     nodes[0]["reviewRequests"] = ["nodes": reviewers.map { ["requestedReviewer": $0] }]
-    nodes[0]["timelineItems"] = [
-      "nodes": requestEvents.map { ["createdAt": $0.createdAt, "requestedReviewer": $0.reviewer] }
-    ]
+    let eventNodes: [Any] = requestEvents.map { ["createdAt": $0.createdAt, "requestedReviewer": $0.reviewer] }
+    nodes[0]["timelineItems"] = ["nodes": (leadingNullEvent ? [NSNull()] : []) + eventNodes]
     requested["nodes"] = nodes
     data["requested"] = requested
     response["data"] = data
@@ -222,6 +222,13 @@ struct GitHubClientTests {
       requestEvents: [("2027-01-14T09:00:00Z", ["login": "octo-me"]), ("2027-01-14T11:00:00Z", ["login": "someone-else"])])
     #expect(pullRequest?.viewerReviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
     #expect(pullRequest?.reviewRequestedAt == isoDate("2027-01-14T11:00:00Z"))
+  }
+
+  @Test func nullRequestEventIsSkipped() async throws {
+    let pullRequest = try await firstReviewRequest(
+      reviewers: [["login": "octo-me"]], requestEvents: [("2027-01-14T09:00:00Z", ["login": "octo-me"])],
+      leadingNullEvent: true)
+    #expect(pullRequest?.viewerReviewRequestedAt == isoDate("2027-01-14T09:00:00Z"))
   }
 
   @Test func directRequestIgnoresALaterRequestToATeam() async throws {

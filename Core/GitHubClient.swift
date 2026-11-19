@@ -238,7 +238,8 @@ private struct PullRequestNode: Decodable {
     var slug: String?
   }
   struct TotalCount: Decodable { var totalCount: Int }
-  struct Timeline: Decodable { var nodes: [TimelineEvent] }
+  // GitHub can return a null event, for example one the token cannot read.
+  struct Timeline: Decodable { var nodes: [TimelineEvent?] }
   struct TimelineEvent: Decodable {
     var createdAt: Date?
     var requestedReviewer: Reviewer?
@@ -286,7 +287,7 @@ private struct PullRequestNode: Decodable {
     let failedStatusContexts = (rollup?.contexts.statusContextCountsByState ?? [])
       .filter { GitHubClient.isFailedStatusContextState($0.state) }.reduce(0) { $0 + $1.count }
     let reviewers = reviewRequests?.nodes.compactMap(\.requestedReviewer) ?? []
-    let requestEvents = timelineItems?.nodes ?? []
+    let requestEvents = (timelineItems?.nodes ?? []).compactMap(\.self)
     // Tower does not know the viewer's teams, so a team-only request matches any requested team.
     let isDirectRequest = reviewers.contains { $0.login == viewerLogin }
     let viewerRequestEvent = requestEvents.last { event in

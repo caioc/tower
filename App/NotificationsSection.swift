@@ -9,7 +9,14 @@ struct NotificationsSection: View {
   var body: some View {
     SettingsRow(label: "Notifications") {
       ForEach(NotificationEventKind.allCases, id: \.self) { kind in
-        NotificationKindToggle(kind: kind)
+        NotificationKindToggle(kind: kind) {
+          // Launch asks only when a switch is on, so a switch turned on later asks here. macOS prompts at most once.
+          guard !DemoLaunch.isActive else { return }
+          Task {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert])
+            await refreshAuthorization()
+          }
+        }
       }
       if isDenied {
         SettingsCaption(text: "macOS blocks Tower notifications.")
@@ -33,20 +40,20 @@ struct NotificationsSection: View {
 
 private struct NotificationKindToggle: View {
   let kind: NotificationEventKind
+  let turnedOn: () -> Void
   @AppStorage private var isOn: Bool
 
-  init(kind: NotificationEventKind) {
+  init(kind: NotificationEventKind, turnedOn: @escaping () -> Void) {
     self.kind = kind
+    self.turnedOn = turnedOn
     _isOn = AppStorage(wrappedValue: true, NotificationSettingsKeys.key(kind))
   }
 
   var body: some View {
     Toggle(kind.title, isOn: $isOn)
       .toggleStyle(.checkbox)
-      // Launch asks only when a switch is on, so a switch turned on later asks here. macOS prompts at most once.
       .onChange(of: isOn) { _, isOn in
-        guard isOn, !DemoLaunch.isActive else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+        if isOn { turnedOn() }
       }
   }
 }
