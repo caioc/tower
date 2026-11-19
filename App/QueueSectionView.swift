@@ -13,7 +13,7 @@ struct QueueSectionView: View {
   let showDetails: (QueueItem) -> Void
   let copyLink: (QueueItem) -> Void
   let dismiss: (QueueItem) -> Void
-  var hover: (QueueItem, Bool) -> Void = { _, _ in }
+  let hover: (QueueItem, Bool) -> Void
   let handlePopoverInput: (PanelInput) -> KeyPress.Result
   let handlePopoverSlideKey: (SlideKey) -> KeyPress.Result
   @AccessibilityFocusState private var accessibilityFocusedItemId: String?

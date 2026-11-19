@@ -10,7 +10,7 @@ struct QueueRowView: View {
   let copyLink: () -> Void
   let dismiss: () -> Void
   var isSlid = false
-  var hover: (Bool) -> Void = { _ in }
+  let hover: (Bool) -> Void
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
