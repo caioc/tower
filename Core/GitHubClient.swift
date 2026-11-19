@@ -88,17 +88,29 @@ public struct GitHubClient: Sendable {
     let today = Self.timestampFormatter.string(from: Calendar.current.startOfDay(for: now))
     let recentlyMergedStart = Calendar.current.date(byAdding: .day, value: -recentlyMergedDays, to: now) ?? now
     let recentlyMergedSince = Self.timestampFormatter.string(from: Calendar.current.startOfDay(for: recentlyMergedStart))
-    let summary = try await fetchSummary(token: token, variables: [
+    let summaryVariables = [
       "requestedQuery": "is:pr is:open review-requested:@me archived:false\(ownerQualifiers)",
       "reviewedQuery": "is:pr reviewed-by:@me -author:@me updated:>=\(today)\(ownerQualifiers)",
       "mergedQuery": "is:pr author:@me merged:>=\(today)\(ownerQualifiers)",
       "recentlyMergedQuery": "is:pr author:@me is:merged merged:>=\(recentlyMergedSince) sort:updated-desc\(ownerQualifiers)",
-    ])
+    ]
+    // async let erases the typed error, so the summary comes back as a Result.
+    async let summaryResult: Result<SummaryResponse.Payload, SourceFailure> = {
+      do throws(SourceFailure) {
+        return .success(try await fetchSummary(token: token, variables: summaryVariables))
+      } catch {
+        return .failure(error)
+      }
+    }()
     let authored = try await fetchAuthoredPullRequests(
       token: token, query: "is:pr is:open author:@me archived:false\(ownerQualifiers)")
+    let summary = try await summaryResult.get()
+    // A search cursor does not lock the result set, so a PR can show on two pages.
+    var seenURLs: Set<URL> = []
     return GitHubSnapshot(
       viewerLogin: summary.viewer.login,
-      authoredPullRequests: authored.compactMap { $0?.pullRequest(viewerLogin: summary.viewer.login) },
+      authoredPullRequests: authored.compactMap { $0?.pullRequest(viewerLogin: summary.viewer.login) }
+        .filter { seenURLs.insert($0.url).inserted },
       reviewRequests: summary.requested.nodes.compactMap { $0?.pullRequest(viewerLogin: summary.viewer.login) },
       reviewsSubmittedToday: summary.reviewed.issueCount,
       mergedToday: summary.merged.issueCount,
@@ -120,6 +132,7 @@ public struct GitHubClient: Sendable {
       var variables: [String: Any] = ["authoredQuery": query, "pageSize": Self.authoredPageSize]
       if let cursor { variables["cursor"] = cursor }
       let response: AuthoredResponse = try await sendGraphQL(token: token, query: authoredQuery, variables: variables)
+      // GraphQL can return data and errors together; one failed field should not hide the PRs that did load.
       guard let page = response.data?.authored else {
         throw .unexpected(response.errors?.first?.message ?? "GitHub response has no data")
       }
@@ -138,7 +151,13 @@ public struct GitHubClient: Sendable {
     request.setValue("bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try? JSONSerialization.data(withJSONObject: ["query": query, "variables": variables])
-    let data = try await sendMapped(request, transport: transport)
+    let data: Data
+    do {
+      data = try await sendMapped(request, transport: transport)
+    } catch .unexpected("HTTP 502") {
+      // The GitHub edge answers 502 now and then even to a light request, and a second try usually gets through.
+      data = try await sendMapped(request, transport: transport)
+    }
     do {
       return try Self.decoder.decode(Response.self, from: data)
     } catch {

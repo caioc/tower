@@ -547,10 +547,13 @@ private func cacheDirectoryWithFailedPipeline() throws -> URL {
     await store.refresh()
     let requestVariables = try githubSearchVariables(in: transport)
     #expect(requestVariables.count == 4)
-    let firstRequested = try #require(requestVariables[0]["requestedQuery"] as? String)
-    let firstAuthored = try #require(requestVariables[1]["authoredQuery"] as? String)
-    let secondRequested = try #require(requestVariables[2]["requestedQuery"] as? String)
-    let secondAuthored = try #require(requestVariables[3]["authoredQuery"] as? String)
+    // The summary and the authored search of one refresh go out together, in either order.
+    let firstRefresh = requestVariables[0..<2]
+    let secondRefresh = requestVariables[2..<4]
+    let firstRequested = try #require(firstRefresh.compactMap { $0["requestedQuery"] as? String }.first)
+    let firstAuthored = try #require(firstRefresh.compactMap { $0["authoredQuery"] as? String }.first)
+    let secondRequested = try #require(secondRefresh.compactMap { $0["requestedQuery"] as? String }.first)
+    let secondAuthored = try #require(secondRefresh.compactMap { $0["authoredQuery"] as? String }.first)
     #expect(firstRequested.hasSuffix(" org:acme"))
     #expect(firstAuthored.hasSuffix(" org:acme"))
     #expect(secondRequested.hasSuffix(" org:side-project"))

@@ -9,6 +9,20 @@ private struct StubTokenProvider: GitHubTokenProvider {
 
 private let now = isoDate("2027-01-15T12:00:00Z")
 
+private final class AttemptCounter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var attempts = 0
+
+  var count: Int { lock.withLock { attempts } }
+
+  func next() -> Int {
+    lock.withLock {
+      attempts += 1
+      return attempts
+    }
+  }
+}
+
 private func client(token: Result<String, SourceFailure> = .success("secret-token"), transport: StubTransport) -> GitHubClient {
   GitHubClient(tokenProvider: StubTokenProvider(result: token), transport: transport)
 }
@@ -141,7 +155,66 @@ struct GitHubClientTests {
       ((try? variables(in: request))?["authoredQuery"] as? String) != nil
     }
     #expect(authoredRequests.count == 10)
-    #expect(snapshot.authoredPullRequests.count == 20)
+    // Every page repeats the same 2 pull requests, and a repeat shows once.
+    #expect(snapshot.authoredPullRequests.count == 2)
+  }
+
+  @Test func authoredPullRequestOnTwoPagesShowsOnce() async throws {
+    let lastBody = try fixture("github-search.json")
+    var firstPage = try #require(try JSONSerialization.jsonObject(with: lastBody) as? [String: Any])
+    var firstData = try #require(firstPage["data"] as? [String: Any])
+    var firstAuthored = try #require(firstData["authored"] as? [String: Any])
+    firstAuthored["pageInfo"] = ["hasNextPage": true, "endCursor": "cursor-1"]
+    firstData["authored"] = firstAuthored
+    firstPage["data"] = firstData
+    let firstBody = try JSONSerialization.data(withJSONObject: firstPage)
+
+    let transport = StubTransport { request in
+      let cursor = (try variables(in: request))["cursor"] as? String
+      return (cursor == "cursor-1" ? lastBody : firstBody, 200)
+    }
+    let snapshot = try await client(transport: transport).fetch(now: now)
+    #expect(snapshot.authoredPullRequests.count == 2)
+    #expect(snapshot.authoredPullRequests.first?.number == 2184)
+  }
+
+  @Test func summaryRunsNextToTheAuthoredPages() async throws {
+    let fixtureData = try fixture("github-search.json")
+    let authoredRequestSent = DispatchSemaphore(value: 0)
+    let transport = StubTransport { request in
+      if (try variables(in: request))["authoredQuery"] != nil {
+        authoredRequestSent.signal()
+      } else if authoredRequestSent.wait(timeout: .now() + 2) == .timedOut {
+        // The summary got no answer while the authored search waited for it.
+        return (Data(), 500)
+      }
+      return (fixtureData, 200)
+    }
+    let snapshot = try await client(transport: transport).fetch(now: now)
+    #expect(snapshot.viewerLogin == "octo-me")
+  }
+
+  @Test func badGatewayIsRetriedOnce() async throws {
+    let fixtureData = try fixture("github-search.json")
+    let summaryAttempts = AttemptCounter()
+    let transport = StubTransport { request in
+      guard (try variables(in: request))["requestedQuery"] != nil else { return (fixtureData, 200) }
+      return summaryAttempts.next() == 1 ? (Data(), 502) : (fixtureData, 200)
+    }
+    let snapshot = try await client(transport: transport).fetch(now: now)
+    #expect(snapshot.viewerLogin == "octo-me")
+    #expect(summaryAttempts.count == 2)
+  }
+
+  @Test func secondBadGatewayIsUnexpectedFailure() async {
+    let summaryAttempts = AttemptCounter()
+    let transport = StubTransport { request in
+      guard (try variables(in: request))["requestedQuery"] != nil else { return (try fixture("github-search.json"), 200) }
+      _ = summaryAttempts.next()
+      return (Data(), 502)
+    }
+    await #expect(throws: SourceFailure.unexpected("HTTP 502")) { try await client(transport: transport).fetch(now: now) }
+    #expect(summaryAttempts.count == 2)
   }
 
   @Test func decodesRecentlyMergedPullRequests() async throws {
