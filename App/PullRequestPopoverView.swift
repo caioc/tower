@@ -8,7 +8,7 @@ struct PullRequestPopoverView: View {
   let copyLink: () -> Void
   // The popover is its own key window, so the panel's key handlers do not see these keys.
   let handleInput: (PanelInput) -> KeyPress.Result
-  var handleSlideKey: (SlideKey) -> KeyPress.Result = { _ in .ignored }
+  let handleSlideKey: (SlideKey) -> KeyPress.Result
   @State private var isShowingCopied = false
   @State private var copyEventCount = 0
   @FocusState private var isFocused: Bool

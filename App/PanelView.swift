@@ -41,8 +41,6 @@ struct PanelView: View {
             .background(OverlayScroller())
         }
         .frame(height: min(max(contentHeight, 1), max(scrollAreaMaxHeight - pinnedEdgeHeight, 1)))
-        // Rows move under a still pointer without a hover event, so a swipe waits for the next hover.
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, _ in hoveredItemId = nil }
         .overlay(alignment: .bottom) { undoBar }
         .onChange(of: selectedItemId) { _, newValue in
           if let newValue { proxy.scrollTo(newValue) }

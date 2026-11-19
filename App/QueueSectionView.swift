@@ -15,7 +15,7 @@ struct QueueSectionView: View {
   let dismiss: (QueueItem) -> Void
   var hover: (QueueItem, Bool) -> Void = { _, _ in }
   let handlePopoverInput: (PanelInput) -> KeyPress.Result
-  var handlePopoverSlideKey: (SlideKey) -> KeyPress.Result = { _ in .ignored }
+  let handlePopoverSlideKey: (SlideKey) -> KeyPress.Result
   @AccessibilityFocusState private var accessibilityFocusedItemId: String?
 
   var body: some View {
