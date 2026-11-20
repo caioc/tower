@@ -49,6 +49,27 @@ private struct RendezvousTransport: HTTPTransport {
   }
 }
 
+// Answers the summary with 401 and holds every authored request until it is cancelled.
+private final class CancellationRecordingTransport: HTTPTransport, @unchecked Sendable {
+  private let lock = NSLock()
+  private var cancelled = false
+
+  var authoredRequestWasCancelled: Bool { lock.withLock { cancelled } }
+
+  func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    let isAuthored = try variables(in: request)["authoredQuery"] != nil
+    if isAuthored {
+      do {
+        try await Task.sleep(for: .seconds(30))
+      } catch {
+        lock.withLock { cancelled = true }
+        throw error
+      }
+    }
+    return (Data(), HTTPURLResponse(url: request.url!, statusCode: isAuthored ? 200 : 401, httpVersion: nil, headerFields: nil)!)
+  }
+}
+
 private func authoredPage(_ fixtureData: Data, hasNextPage: Bool, endCursor: String?) throws -> Data {
   var page = try #require(try JSONSerialization.jsonObject(with: fixtureData) as? [String: Any])
   var pageData = try #require(page["data"] as? [String: Any])
@@ -247,6 +268,22 @@ struct GitHubClientTests {
       (try variables(in: request))["requestedQuery"] != nil ? (Data(), 401) : (Data(), 502)
     }
     await #expect(throws: SourceFailure.authentication) { try await client(transport: transport).fetch(now: now) }
+  }
+
+  // If the fetch waited for the authored search, the 30 s sleep would end uncancelled.
+  @Test(.timeLimit(.minutes(1))) func summaryAuthenticationFailureCancelsTheAuthoredPages() async {
+    let transport = CancellationRecordingTransport()
+    let client = GitHubClient(tokenProvider: StubTokenProvider(result: .success("secret-token")), transport: transport)
+    await #expect(throws: SourceFailure.authentication) { try await client.fetch(now: now) }
+    #expect(transport.authoredRequestWasCancelled)
+  }
+
+  @Test func summaryFailureWinsWhenNeitherFailureIsAuthentication() async {
+    let authoredErrorBody = Data(#"{"errors":[{"message":"authored search failed"}]}"#.utf8)
+    let transport = StubTransport { request in
+      (try variables(in: request))["requestedQuery"] != nil ? (Data(), 500) : (authoredErrorBody, 200)
+    }
+    await #expect(throws: SourceFailure.unexpected("HTTP 500")) { try await client(transport: transport).fetch(now: now) }
   }
 
   @Test func authoredAuthenticationFailureWinsOverSummaryFailure() async {
