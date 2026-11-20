@@ -94,7 +94,7 @@ public struct GitHubClient: Sendable {
       "mergedQuery": "is:pr author:@me merged:>=\(today)\(ownerQualifiers)",
       "recentlyMergedQuery": "is:pr author:@me is:merged merged:>=\(recentlyMergedSince) sort:updated-desc\(ownerQualifiers)",
     ]
-    let authoredQuery = "is:pr is:open author:@me archived:false\(ownerQualifiers)"
+    let authoredSearchText = "is:pr is:open author:@me archived:false\(ownerQualifiers)"
     // async let erases the typed error, so both requests come back as a Result.
     async let summaryResult: Result<SummaryResponse.Payload, SourceFailure> = {
       do throws(SourceFailure) {
@@ -105,7 +105,7 @@ public struct GitHubClient: Sendable {
     }()
     async let authoredResult: Result<[PullRequestNode?], SourceFailure> = {
       do throws(SourceFailure) {
-        return .success(try await fetchAuthoredPullRequests(token: token, query: authoredQuery))
+        return .success(try await fetchAuthoredPullRequests(token: token, query: authoredSearchText))
       } catch {
         return .failure(error)
       }
